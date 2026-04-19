@@ -1,7 +1,7 @@
 """Pydantic schemas for surveillance endpoints."""
 
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SurveillanceBase(BaseModel):
@@ -19,5 +19,4 @@ class SurveillanceRead(SurveillanceBase):
     statut: str
     created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
