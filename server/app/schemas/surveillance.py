@@ -11,6 +11,7 @@ class SurveillanceBase(BaseModel):
     charge: float = Field(default=1.0, gt=0)
     presence: bool = False
     mode_affectation: str = Field(default="AUTOMATIQUE", max_length=24)
+    statut: str = Field(default="AFFECTE", max_length=24)  # AFFECTE, CONFIRME
 
 
 class SurveillanceCreate(SurveillanceBase):
@@ -21,6 +22,7 @@ class SurveillanceUpdate(BaseModel):
     charge: float | None = Field(default=None, gt=0)
     presence: bool | None = None
     mode_affectation: str | None = None
+    statut: str | None = None
 
 
 class SurveillanceRead(SurveillanceBase):

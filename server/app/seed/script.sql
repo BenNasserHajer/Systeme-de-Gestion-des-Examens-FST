@@ -1,5 +1,3 @@
-
-
 BEGIN;
 
 -- ============================================================
@@ -29,6 +27,7 @@ DROP TYPE IF EXISTS mode_affectation;
 DROP TYPE IF EXISTS type_enseignement;
 DROP TYPE IF EXISTS type_epreuve;
 DROP TYPE IF EXISTS type_session;
+DROP TYPE IF EXISTS statut_surveillance;
 
 -- ============================================================
 -- EXTENSIONS
@@ -38,13 +37,14 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ============================================================
 -- 1. ÉNUMÉRATIONS
 -- ============================================================
-CREATE TYPE type_session       AS ENUM ('PRINCIPALE','RATTRAPAGE');
-CREATE TYPE type_epreuve       AS ENUM ('EXAMEN_FINAL','DS');
-CREATE TYPE type_enseignement  AS ENUM ('COURS','TD','TP');
-CREATE TYPE mode_affectation   AS ENUM ('AUTOMATIQUE','MANUELLE');
-CREATE TYPE statut_planif      AS ENUM ('BROUILLON','VALIDEE','PUBLIEE');
-CREATE TYPE type_disponibilite AS ENUM ('DISPONIBLE','INDISPONIBLE','COURS_PREVU','MISSION','CONGE');
-CREATE TYPE jour_semaine       AS ENUM ('LUNDI','MARDI','MERCREDI','JEUDI','VENDREDI','SAMEDI');
+CREATE TYPE type_session        AS ENUM ('PRINCIPALE','RATTRAPAGE');
+CREATE TYPE type_epreuve        AS ENUM ('EXAMEN_FINAL','DS');
+CREATE TYPE type_enseignement   AS ENUM ('COURS','TD','TP');
+CREATE TYPE mode_affectation    AS ENUM ('AUTOMATIQUE','MANUELLE');
+CREATE TYPE statut_planif       AS ENUM ('BROUILLON','VALIDEE','PUBLIEE');
+CREATE TYPE type_disponibilite  AS ENUM ('DISPONIBLE','INDISPONIBLE','COURS_PREVU','MISSION','CONGE');
+CREATE TYPE jour_semaine        AS ENUM ('LUNDI','MARDI','MERCREDI','JEUDI','VENDREDI','SAMEDI');
+CREATE TYPE statut_surveillance AS ENUM ('AFFECTE','CONFIRME');
 
 -- ============================================================
 -- 2. DEPARTEMENT
@@ -180,10 +180,10 @@ CREATE TABLE section_matiere (
 -- ============================================================
 CREATE TABLE enseignement (
     id                  SERIAL PRIMARY KEY,
-    enseignant_id       INTEGER            NOT NULL REFERENCES enseignant(id),
-    matiere_id          INTEGER            NOT NULL REFERENCES matiere(id),
-    type_enseignement   type_enseignement  NOT NULL,
-    nb_heures           NUMERIC(5,2)       NOT NULL DEFAULT 0,
+    enseignant_id       INTEGER           NOT NULL REFERENCES enseignant(id),
+    matiere_id          INTEGER           NOT NULL REFERENCES matiere(id),
+    type_enseignement   type_enseignement NOT NULL,
+    nb_heures           NUMERIC(5,2)      NOT NULL DEFAULT 0,
     annee_sem           VARCHAR(20),
     UNIQUE (enseignant_id, matiere_id, type_enseignement)
 );
@@ -193,21 +193,28 @@ CREATE TABLE enseignement (
 -- ============================================================
 CREATE TABLE disponibilite_enseignant (
     id             SERIAL PRIMARY KEY,
-    enseignant_id  INTEGER             NOT NULL REFERENCES enseignant(id),
-    date           DATE                NOT NULL,
-    heure_debut    TIME                NOT NULL,
-    heure_fin      TIME                NOT NULL,
-    type_dispo     type_disponibilite  NOT NULL DEFAULT 'INDISPONIBLE',
+    enseignant_id  INTEGER            NOT NULL REFERENCES enseignant(id),
+    date           DATE               NOT NULL,
+    heure_debut    TIME               NOT NULL,
+    heure_fin      TIME               NOT NULL,
+    type_dispo     type_disponibilite NOT NULL DEFAULT 'INDISPONIBLE',
     motif          VARCHAR(200),
-    confirme       BOOLEAN             NOT NULL DEFAULT TRUE
+    confirme       BOOLEAN            NOT NULL DEFAULT TRUE
 );
 
 -- ============================================================
--- 15. PLANIFICATION_EXAMEN  (table créée, vide volontairement)
+-- 15. PLANIFICATION_EXAMEN
+-- ============================================================
+-- ✅ AJOUT : departement_id
+--    Permet de savoir directement à quel département appartient
+--    chaque examen planifié, sans avoir à remonter 4 jointures.
+--    Valeur remplie au moment où l'admin choisit le département
+--    dans l'interface avant de créer la planification.
 -- ============================================================
 CREATE TABLE planification_examen (
     id                      SERIAL PRIMARY KEY,
     session_id              INTEGER          NOT NULL REFERENCES session(id),
+    departement_id          INTEGER          NOT NULL REFERENCES departement(id),  
     section_matiere_id      INTEGER          NOT NULL REFERENCES section_matiere(id),
     creneau_id              INTEGER          NOT NULL REFERENCES creneau(id),
     type_epreuve            type_epreuve     NOT NULL,
@@ -219,6 +226,9 @@ CREATE TABLE planification_examen (
     UNIQUE (session_id, section_matiere_id, creneau_id, type_epreuve)
 );
 
+-- ============================================================
+-- 16. PLANIF_SALLE
+-- ============================================================
 CREATE TABLE planif_salle (
     planification_id  INTEGER NOT NULL REFERENCES planification_examen(id),
     salle_id          INTEGER NOT NULL REFERENCES salle(id),
@@ -227,15 +237,25 @@ CREATE TABLE planif_salle (
 );
 
 -- ============================================================
--- 16. SURVEILLANCE  (table créée, vide volontairement)
+-- 17. SURVEILLANCE
+-- ============================================================
+-- ✅ AJOUT : est_externe + motif_externe
+--    est_externe  = FALSE → le prof appartient au même département que l'examen (cas normal)
+--    est_externe  = TRUE  → le prof vient d'un autre département (cas de besoin / urgence)
+--    motif_externe        → raison du recours à un prof externe (ex: "Manque de personnel")
 -- ============================================================
 CREATE TABLE surveillance (
-    id                SERIAL PRIMARY KEY,
-    planification_id  INTEGER          NOT NULL REFERENCES planification_examen(id),
-    enseignant_id     INTEGER          NOT NULL REFERENCES enseignant(id),
-    charge            NUMERIC(4,2)     DEFAULT 1.0,
-    presence          BOOLEAN          DEFAULT FALSE,
-    mode_affectation  mode_affectation NOT NULL DEFAULT 'AUTOMATIQUE',
+    id                   SERIAL PRIMARY KEY,
+    planification_id     INTEGER             NOT NULL REFERENCES planification_examen(id),
+    enseignant_id        INTEGER             NOT NULL REFERENCES enseignant(id),
+    est_externe          BOOLEAN             NOT NULL DEFAULT FALSE,
+    motif_externe        VARCHAR(200),
+    charge               NUMERIC(4,2)        DEFAULT 1.0,
+    presence             BOOLEAN             DEFAULT FALSE,
+    mode_affectation     mode_affectation    NOT NULL DEFAULT 'AUTOMATIQUE',
+    statut_surveillance  statut_surveillance DEFAULT 'AFFECTE',
+    created_at           TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at           TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     UNIQUE (planification_id, enseignant_id)
 );
 
@@ -252,10 +272,11 @@ CREATE INDEX idx_sm_section        ON section_matiere(section_id);
 CREATE INDEX idx_sm_matiere        ON section_matiere(matiere_id);
 CREATE INDEX idx_dispo_ens         ON disponibilite_enseignant(enseignant_id, date);
 CREATE INDEX idx_planif_session    ON planification_examen(session_id);
+CREATE INDEX idx_planif_dept       ON planification_examen(departement_id);   -- ✅ NOUVEAU
 CREATE INDEX idx_planif_creneau    ON planification_examen(creneau_id);
 CREATE INDEX idx_surv_planif       ON surveillance(planification_id);
 CREATE INDEX idx_surv_ens          ON surveillance(enseignant_id);
-
+CREATE INDEX idx_surv_externe      ON surveillance(est_externe);               -- ✅ NOUVEAU
 
 -- ============================================================
 -- ============================================================
@@ -506,9 +527,9 @@ FROM enseignant;
 -- 7. NIVEAUX
 -- ─────────────────────────────────────────────────────────────
 INSERT INTO niveau (libelle, annee, type_formation, departement_id) VALUES
-('MR',     2, 'INF/IOT', (SELECT id FROM departement WHERE code='DSI')),
-('Prépa',  1, 'Intégré', (SELECT id FROM departement WHERE code='DSI')),
-('L',      3, 'DSI',     (SELECT id FROM departement WHERE code='DSI'));
+('MR',    2, 'INF/IOT', (SELECT id FROM departement WHERE code='DSI')),
+('Prépa', 1, 'Intégré', (SELECT id FROM departement WHERE code='DSI')),
+('L',     3, 'DSI',     (SELECT id FROM departement WHERE code='DSI'));
 
 -- ─────────────────────────────────────────────────────────────
 -- 8. SECTION
@@ -634,23 +655,20 @@ COMMIT;
 -- ─────────────────────────────────────────────────────────────
 -- VÉRIFICATIONS POST-INSERT
 -- ─────────────────────────────────────────────────────────────
-SELECT 'departement'              AS table_name, COUNT(*) AS nb FROM departement              UNION ALL
-SELECT 'niveau',                                  COUNT(*)        FROM niveau                   UNION ALL
-SELECT 'section',                                 COUNT(*)        FROM section                  UNION ALL
-SELECT 'groupe',                                  COUNT(*)        FROM groupe                   UNION ALL
-SELECT 'salle',                                   COUNT(*)        FROM salle                    UNION ALL
-SELECT 'creneau',                                 COUNT(*)        FROM creneau                  UNION ALL
-SELECT 'session',                                 COUNT(*)        FROM session                  UNION ALL
-SELECT 'enseignant',                              COUNT(*)        FROM enseignant               UNION ALL
-SELECT 'charge_horaire',                          COUNT(*)        FROM charge_horaire           UNION ALL
-SELECT 'matiere',                                 COUNT(*)        FROM matiere                  UNION ALL
-SELECT 'section_matiere',                         COUNT(*)        FROM section_matiere          UNION ALL
-SELECT 'enseignement',                            COUNT(*)        FROM enseignement             UNION ALL
-SELECT 'disponibilite_enseignant (vide)',         COUNT(*)        FROM disponibilite_enseignant UNION ALL
-SELECT 'planification_examen (vide)',             COUNT(*)        FROM planification_examen     UNION ALL
-SELECT 'planif_salle (vide)',                     COUNT(*)        FROM planif_salle             UNION ALL
-SELECT 'surveillance (vide)',                     COUNT(*)        FROM surveillance
+SELECT 'departement'                      AS table_name, COUNT(*) AS nb FROM departement              UNION ALL
+SELECT 'niveau',                                          COUNT(*)        FROM niveau                   UNION ALL
+SELECT 'section',                                         COUNT(*)        FROM section                  UNION ALL
+SELECT 'groupe',                                          COUNT(*)        FROM groupe                   UNION ALL
+SELECT 'salle',                                           COUNT(*)        FROM salle                    UNION ALL
+SELECT 'creneau',                                         COUNT(*)        FROM creneau                  UNION ALL
+SELECT 'session',                                         COUNT(*)        FROM session                  UNION ALL
+SELECT 'enseignant',                                      COUNT(*)        FROM enseignant               UNION ALL
+SELECT 'charge_horaire',                                  COUNT(*)        FROM charge_horaire           UNION ALL
+SELECT 'matiere',                                         COUNT(*)        FROM matiere                  UNION ALL
+SELECT 'section_matiere',                                 COUNT(*)        FROM section_matiere          UNION ALL
+SELECT 'enseignement',                                    COUNT(*)        FROM enseignement             UNION ALL
+SELECT 'disponibilite_enseignant (vide)',                 COUNT(*)        FROM disponibilite_enseignant UNION ALL
+SELECT 'planification_examen (vide)',                     COUNT(*)        FROM planification_examen     UNION ALL
+SELECT 'planif_salle (vide)',                             COUNT(*)        FROM planif_salle             UNION ALL
+SELECT 'surveillance (vide)',                             COUNT(*)        FROM surveillance
 ORDER BY table_name;
-
-
----

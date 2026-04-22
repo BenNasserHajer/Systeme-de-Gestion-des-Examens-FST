@@ -1226,7 +1226,7 @@ def create_app() -> gr.Blocks:
             inputs=[catalogue_state, section_label],
             outputs=[section_md],
         )
-        
+        btn = gr.Button("🚀 Generer en mode SIMULATION (pas de sauvegarde)", variant="primary", size="lg")
         save_to_db.change(
             fn=_update_button_text,
             inputs=[save_to_db],
@@ -1244,7 +1244,7 @@ def create_app() -> gr.Blocks:
             label="salles (JSON)",
         )
 
-        btn = gr.Button("🚀 Generer en mode SIMULATION (pas de sauvegarde)", variant="primary", size="lg")
+        # btn = gr.Button("🚀 Generer en mode SIMULATION (pas de sauvegarde)", variant="primary", size="lg")
 
         summary = gr.Markdown(label="Resume")
         out_json = gr.JSON(label="Planifications generees (non persistees)")
