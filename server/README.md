@@ -9,11 +9,12 @@
 | Besoin | Document |
 |--------|----------|
 | 🚀 **Démarrer rapidement** | [`docs/guides/QUICK_START.md`](docs/guides/QUICK_START.md) |
-| 🎨 **Tester avec Gradio** | [`docs/guides/START_GRADIO.md`](docs/guides/START_GRADIO.md) |
 | 📡 **API Documentation** | [`docs/api/API_PLANIFICATION.md`](docs/api/API_PLANIFICATION.md) |
+| 🧪 **Exemples Swagger** | [`docs/api/SWAGGER_EXAMPLES.md`](docs/api/SWAGGER_EXAMPLES.md) |
 | 🎨 **Guide Frontend P3** | [`docs/api/GUIDE_P3_FRONTEND.md`](docs/api/GUIDE_P3_FRONTEND.md) |
 | 🏗️ **Architecture** | [`docs/architecture/ALGORITHME_PLANIFICATION.md`](docs/architecture/ALGORITHME_PLANIFICATION.md) |
-| 🎤 **Soutenance** | [`docs/soutenance/SOUTENANCE_GUIDE.md`](docs/soutenance/SOUTENANCE_GUIDE.md) |
+| 🎤 **Démo Soutenance** | [`docs/demo/SOUTENANCE_GUIDE.md`](docs/demo/SOUTENANCE_GUIDE.md) |
+| 🗂️ **Organisation Soutenance** | [`docs/soutenance/ORGANISATION_SOUTENANCE.md`](docs/soutenance/ORGANISATION_SOUTENANCE.md) |
 
 ### 📁 Structure Documentation
 
@@ -22,6 +23,7 @@ docs/
 ├── guides/          # Guides d'utilisation
 ├── api/             # Documentation API
 ├── architecture/    # Architecture et algorithmes
+├── demo/            # Guide de démonstration
 └── soutenance/      # Préparation soutenance
 ```
 
@@ -255,11 +257,13 @@ python verify_constraints.py
 
 | Document | Description |
 |----------|-------------|
-| `ALGORITHME_PLANIFICATION.md` | Documentation exhaustive de l'algorithme |
-| `IMPLEMENTATION_STATUS.md` | État d'implémentation détaillé |
-| `QUICK_START.md` | Guide de démarrage rapide |
-| `SOUTENANCE_GUIDE.md` | Guide pour la soutenance |
-| `DB_redme.md` | Documentation de la base de données |
+| `docs/api/API_PLANIFICATION.md` | Contrat API planification (à jour) |
+| `docs/api/SWAGGER_EXAMPLES.md` | Exemples de tests Swagger |
+| `docs/guides/QUICK_START.md` | Guide de démarrage rapide |
+| `docs/architecture/ALGORITHME_PLANIFICATION.md` | Documentation exhaustive de l'algorithme |
+| `docs/architecture/IMPLEMENTATION_STATUS.md` | État d'implémentation détaillé |
+| `docs/demo/SOUTENANCE_GUIDE.md` | Guide de démonstration |
+| `docs/soutenance/ORGANISATION_SOUTENANCE.md` | Organisation de soutenance |
 
 ### API Documentation
 

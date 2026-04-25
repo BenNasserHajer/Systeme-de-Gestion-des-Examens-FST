@@ -1,0 +1,105 @@
+{
+  "session_id": 1,
+  "session_date_debut": "2026-06-01",
+  "session_date_fin": "2026-06-30",
+  "session_statut": "BROUILLON",
+  "semestre": "S1",
+  "mode": "AUTO",
+  "tasks": [
+    {
+      "section_id": 101,
+      "section_matiere_id": 1001,
+      "matiere_id": 1,
+      "matiere": "Algorithmique Avancee",
+      "semestre": "S1",
+      "type_epreuve": "EXAMEN_FINAL",
+      "duree": 120,
+      "section_nb_etudiants": 35,
+      "coefficient": 2.0,
+      "nb_surveillants_requis": 2,
+      "a_examen_final": true,
+      "a_ds": true
+    },
+    {
+      "section_id": 101,
+      "section_matiere_id": 1002,
+      "matiere_id": 2,
+      "matiere": "Base de Donnees",
+      "semestre": "S1",
+      "type_epreuve": "EXAMEN_FINAL",
+      "duree": 120,
+      "section_nb_etudiants": 35,
+      "coefficient": 1.5,
+      "nb_surveillants_requis": 1,
+      "a_examen_final": true,
+      "a_ds": true
+    },
+    {
+      "section_id": 102,
+      "section_matiere_id": 1003,
+      "matiere_id": 3,
+      "matiere": "Systemes Distribues",
+      "semestre": "S1",
+      "type_epreuve": "EXAMEN_FINAL",
+      "duree": 120,
+      "section_nb_etudiants": 28,
+      "coefficient": 2.0,
+      "nb_surveillants_requis": 2,
+      "a_examen_final": true,
+      "a_ds": true
+    }
+  ],
+  "creneaux": [
+    {
+      "date_examen": "2026-06-02",
+      "heure_debut": "08:30:00",
+      "heure_fin": "10:30:00"
+    },
+    {
+      "date_examen": "2026-06-02",
+      "heure_debut": "11:00:00",
+      "heure_fin": "13:00:00"
+    },
+    {
+      "date_examen": "2026-06-03",
+      "heure_debut": "08:30:00",
+      "heure_fin": "10:30:00"
+    },
+    {
+      "date_examen": "2026-06-03",
+      "heure_debut": "11:00:00",
+      "heure_fin": "13:00:00"
+    },
+    {
+      "date_examen": "2026-06-04",
+      "heure_debut": "08:30:00",
+      "heure_fin": "10:30:00"
+    }
+  ],
+  "salles": [
+    {
+      "salle_id": "S20A",
+      "capacite": 20,
+      "batiment": "A",
+      "departement_id": null
+    },
+    {
+      "salle_id": "S20B",
+      "capacite": 20,
+      "batiment": "A",
+      "departement_id": null
+    },
+    {
+      "salle_id": "S30",
+      "capacite": 30,
+      "batiment": "B",
+      "departement_id": null
+    },
+    {
+      "salle_id": "S40",
+      "capacite": 40,
+      "batiment": "B",
+      "departement_id": null
+    }
+  ]
+}

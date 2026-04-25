@@ -13,6 +13,8 @@ from app.schemas.planification import (
     PlanificationCreate,
     PlanificationOut,
     PlanificationUpdate,
+    StatutPlanification,
+    TypeEpreuve,
 )
 from app.services.planif_service import (
     ConstraintViolationError,
@@ -52,10 +54,14 @@ def _to_out(item) -> PlanificationOut:
 
 @router.get("/planifications", response_model=list[PlanificationOut])
 @router.get("/planifications/", response_model=list[PlanificationOut])
+@router.get("/planification_examen", response_model=list[PlanificationOut], deprecated=True)
+@router.get("/planification_examen/", response_model=list[PlanificationOut], deprecated=True)
 def get_planifications(
     session_id: int | None = Query(default=None),
     section_id: int | None = Query(default=None),
     date_examen: date | None = Query(default=None),
+    type_epreuve: TypeEpreuve | None = Query(default=None),
+    statut: StatutPlanification | None = Query(default=None),
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -67,6 +73,8 @@ def get_planifications(
             session_id=session_id,
             section_id=section_id,
             date_examen=date_examen,
+            type_epreuve=type_epreuve,
+            statut=statut,
             skip=skip,
             limit=limit,
         )
@@ -74,6 +82,7 @@ def get_planifications(
 
 
 @router.get("/planifications/{planif_id}", response_model=PlanificationOut)
+@router.get("/planification_examen/{planif_id}", response_model=PlanificationOut, deprecated=True)
 def get_planification(planif_id: int, db: Session = Depends(get_db)) -> PlanificationOut:
     service = PlanifService(db)
     try:
@@ -83,6 +92,7 @@ def get_planification(planif_id: int, db: Session = Depends(get_db)) -> Planific
 
 
 @router.post("/planifications", response_model=PlanificationOut, status_code=status.HTTP_201_CREATED)
+@router.post("/planification_examen", response_model=PlanificationOut, status_code=status.HTTP_201_CREATED, deprecated=True)
 def create_planification(
     payload: PlanificationCreate,
     db: Session = Depends(get_db),
@@ -96,6 +106,7 @@ def create_planification(
 
 
 @router.put("/planifications/{planif_id}", response_model=PlanificationOut)
+@router.put("/planification_examen/{planif_id}", response_model=PlanificationOut, deprecated=True)
 def update_planification(
     planif_id: int,
     payload: PlanificationUpdate,
@@ -112,6 +123,7 @@ def update_planification(
 
 
 @router.delete("/planifications/{planif_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/planification_examen/{planif_id}", status_code=status.HTTP_204_NO_CONTENT, deprecated=True)
 def delete_planification(planif_id: int, db: Session = Depends(get_db)) -> Response:
     service = PlanifService(db)
     try:
@@ -122,6 +134,7 @@ def delete_planification(planif_id: int, db: Session = Depends(get_db)) -> Respo
 
 
 @router.post("/sessions/{session_id}/generer", response_model=GenerationResult)
+@router.post("/sessions/{session_id}/planification_examen/generer", response_model=GenerationResult, deprecated=True)
 def generer_planifications(
     session_id: int,
     payload: GenerationRequest,
@@ -133,6 +146,7 @@ def generer_planifications(
 
 
 @router.post("/planifications/{planif_id}/salles", response_model=PlanificationOut)
+@router.post("/planification_examen/{planif_id}/salles", response_model=PlanificationOut, deprecated=True)
 def affecter_salles_manuel(
     planif_id: int,
     salles: list[PlanifSalleAssign],
@@ -149,12 +163,32 @@ def affecter_salles_manuel(
 
 
 @router.get("/sessions/{session_id}/emploi-du-temps", response_model=list[PlanificationOut])
-def get_emploi_du_temps(session_id: int, db: Session = Depends(get_db)) -> list[PlanificationOut]:
+@router.get(
+    "/sessions/{session_id}/planification_examen/emploi-du-temps",
+    response_model=list[PlanificationOut],
+    deprecated=True,
+)
+def get_emploi_du_temps(
+    session_id: int,
+    section_id: int | None = Query(default=None),
+    type_epreuve: TypeEpreuve | None = Query(default=None),
+    statut: StatutPlanification | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> list[PlanificationOut]:
     service = PlanifService(db)
-    return [_to_out(x) for x in service.get_emploi_du_temps(session_id)]
+    return [
+        _to_out(x)
+        for x in service.get_emploi_du_temps(
+            session_id,
+            section_id=section_id,
+            type_epreuve=type_epreuve,
+            statut=statut,
+        )
+    ]
 
 
 @router.post("/planifications/{planif_id}/valider", response_model=PlanificationOut)
+@router.post("/planification_examen/{planif_id}/valider", response_model=PlanificationOut, deprecated=True)
 def valider_planification(planif_id: int, db: Session = Depends(get_db)) -> PlanificationOut:
     service = PlanifService(db)
     try:
@@ -165,6 +199,7 @@ def valider_planification(planif_id: int, db: Session = Depends(get_db)) -> Plan
 
 
 @router.post("/planifications/{planif_id}/publier", response_model=PlanificationOut)
+@router.post("/planification_examen/{planif_id}/publier", response_model=PlanificationOut, deprecated=True)
 def publier_planification(planif_id: int, db: Session = Depends(get_db)) -> PlanificationOut:
     service = PlanifService(db)
     try:

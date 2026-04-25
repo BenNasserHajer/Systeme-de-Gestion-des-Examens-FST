@@ -1,714 +1,161 @@
-# 📡 API Planification - Documentation Complète
+﻿# API Planification Examens
 
-## 📋 Vue d'Ensemble
+## Base URL
 
-Cette API permet de gérer la planification automatique des examens.
+- API prefix: `http://127.0.0.1:8000/api`
+- Swagger: `http://127.0.0.1:8000/docs`
 
-**Base URL** : `http://127.0.0.1:8000/api`
+## Endpoints principaux
 
-**Format** : JSON
+### 1) Lister les planifications
 
-**Authentication** : Aucune (à implémenter en production)
+- `GET /planifications`
+- Alias legacy (deprecated): `GET /planification_examen`
 
----
+Query params:
+- `session_id` (int, optionnel)
+- `section_id` (int, optionnel)
+- `date_examen` (YYYY-MM-DD, optionnel)
+- `type_epreuve` (`EXAMEN_FINAL` | `DS`, optionnel)
+- `statut` (`BROUILLON` | `VALIDEE` | `PUBLIEE`, optionnel)
+- `skip` (int >= 0, optionnel)
+- `limit` (int 1..200, optionnel)
 
-## 🎯 Endpoints Disponibles
-
-### 1. Lister les Planifications
-
-**GET** `/planifications`
-
-Liste toutes les planifications avec filtres optionnels.
-
-#### Paramètres Query (optionnels)
-
-| Paramètre | Type | Description | Exemple |
-|-----------|------|-------------|---------|
-| `session_id` | integer | Filtrer par session | `?session_id=1` |
-| `section_id` | integer | Filtrer par section | `?section_id=1` |
-| `type_epreuve` | string | Filtrer par type | `?type_epreuve=EXAMEN_FINAL` |
-| `statut` | string | Filtrer par statut | `?statut=BROUILLON` |
-| `skip` | integer | Pagination (offset) | `?skip=0` |
-| `limit` | integer | Pagination (limite) | `?limit=100` |
-
-#### Exemple de Requête
+Exemple:
 
 ```bash
-curl -X GET "http://127.0.0.1:8000/api/planifications?session_id=1&type_epreuve=EXAMEN_FINAL" \
-  -H "Accept: application/json"
+curl "http://127.0.0.1:8000/api/planifications?session_id=1&type_epreuve=EXAMEN_FINAL&statut=BROUILLON"
 ```
 
-#### Réponse Attendue (200 OK)
+### 2) Détail d'une planification
 
-```json
-[
-  {
-    "id": 1,
-    "session_id": 1,
-    "section_id": 1,
-    "section_matiere_id": 10,
-    "type_epreuve": "EXAMEN_FINAL",
-    "date_examen": "2026-01-07",
-    "heure_debut": "08:30:00",
-    "heure_fin": "10:30:00",
-    "duree": 120,
-    "statut": "BROUILLON",
-    "nb_groupes": 1,
-    "salles": [
-      {
-        "id": 1,
-        "salle_id": "AMPHI-INFO",
-        "salle_code": "AMPHI-INFO",
-        "salle_designation": "Amphithéâtre Informatique",
-        "salle_capacite": 150,
-        "groupe_numero": 1,
-        "groupe_effectif": 53
-      }
-    ],
-    "matiere": {
-      "id": 10,
-      "code": "IGL4-ML-DL",
-      "intitule": "Machine Learning & Deep Learning",
-      "coefficient": 2.5,
-      "credit": 3
-    },
-    "section": {
-      "id": 1,
-      "nom": "IGL4",
-      "nb_etudiants": 53
-    }
-  }
-]
-```
+- `GET /planifications/{planif_id}`
+- Alias legacy (deprecated): `GET /planification_examen/{planif_id}`
 
----
+### 3) Créer une planification manuelle
 
-### 2. Récupérer une Planification
+- `POST /planifications`
+- Alias legacy (deprecated): `POST /planification_examen`
 
-**GET** `/planifications/{id}`
-
-Récupère les détails d'une planification spécifique.
-
-#### Paramètres Path
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `id` | integer | ID de la planification |
-
-#### Exemple de Requête
-
-```bash
-curl -X GET "http://127.0.0.1:8000/api/planifications/1" \
-  -H "Accept: application/json"
-```
-
-#### Réponse Attendue (200 OK)
+Body minimal valide (exemple):
 
 ```json
 {
-  "id": 1,
   "session_id": 1,
   "section_id": 1,
   "section_matiere_id": 10,
+  "matiere": "Algorithmique",
   "type_epreuve": "EXAMEN_FINAL",
-  "date_examen": "2026-01-07",
-  "heure_debut": "08:30:00",
-  "heure_fin": "10:30:00",
-  "duree": 120,
+  "mode_affectation": "MANUEL",
   "statut": "BROUILLON",
-  "nb_groupes": 1,
-  "salles": [...],
-  "matiere": {...},
-  "section": {...}
-}
-```
-
-#### Erreurs Possibles
-
-- **404 Not Found** : Planification introuvable
-
-```json
-{
-  "detail": "Planification not found"
-}
-```
-
----
-
-### 3. Créer une Planification Manuelle
-
-**POST** `/planifications`
-
-Crée une planification manuellement (sans l'algorithme).
-
-#### Body (JSON)
-
-```json
-{
-  "session_id": 1,
-  "section_id": 1,
-  "section_matiere_id": 10,
-  "type_epreuve": "EXAMEN_FINAL",
-  "date_examen": "2026-01-07",
+  "date_examen": "2026-06-08",
   "heure_debut": "08:30:00",
   "heure_fin": "10:30:00",
-  "duree": 120,
-  "nb_groupes": 1,
-  "salles": [
-    {
-      "salle_id": "AMPHI-INFO",
-      "groupe_numero": 1,
-      "groupe_effectif": 53
-    }
-  ]
-}
-```
-
-#### Exemple de Requête
-
-```bash
-curl -X POST "http://127.0.0.1:8000/api/planifications" \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
-  -d '{
-    "session_id": 1,
-    "section_id": 1,
-    "section_matiere_id": 10,
-    "type_epreuve": "EXAMEN_FINAL",
-    "date_examen": "2026-01-07",
-    "heure_debut": "08:30:00",
-    "heure_fin": "10:30:00",
-    "duree": 120,
-    "nb_groupes": 1,
-    "salles": [
-      {
-        "salle_id": "AMPHI-INFO",
-        "groupe_numero": 1,
-        "groupe_effectif": 53
-      }
-    ]
-  }'
-```
-
-#### Réponse Attendue (201 Created)
-
-```json
-{
-  "id": 15,
-  "session_id": 1,
-  "section_id": 1,
-  "section_matiere_id": 10,
-  "type_epreuve": "EXAMEN_FINAL",
-  "date_examen": "2026-01-07",
-  "heure_debut": "08:30:00",
-  "heure_fin": "10:30:00",
-  "duree": 120,
-  "statut": "BROUILLON",
-  "nb_groupes": 1,
-  "salles": [...]
-}
-```
-
-#### Erreurs Possibles
-
-- **409 Conflict** : Contrainte violée (ex: salle déjà occupée)
-- **422 Unprocessable Entity** : Données invalides
-
----
-
-### 4. Mettre à Jour une Planification
-
-**PUT** `/planifications/{id}`
-
-Met à jour une planification existante.
-
-#### Paramètres Path
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `id` | integer | ID de la planification |
-
-#### Body (JSON)
-
-```json
-{
-  "date_examen": "2026-01-08",
-  "heure_debut": "11:00:00",
-  "heure_fin": "13:00:00",
-  "salles": [
-    {
-      "salle_id": "S30A",
-      "groupe_numero": 1,
-      "groupe_effectif": 53
-    }
-  ]
-}
-```
-
-#### Exemple de Requête
-
-```bash
-curl -X PUT "http://127.0.0.1:8000/api/planifications/1" \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
-  -d '{
-    "date_examen": "2026-01-08",
-    "heure_debut": "11:00:00",
-    "heure_fin": "13:00:00"
-  }'
-```
-
-#### Réponse Attendue (200 OK)
-
-```json
-{
-  "id": 1,
-  "date_examen": "2026-01-08",
-  "heure_debut": "11:00:00",
-  "heure_fin": "13:00:00",
-  ...
-}
-```
-
----
-
-### 5. Supprimer une Planification
-
-**DELETE** `/planifications/{id}`
-
-Supprime une planification.
-
-#### Paramètres Path
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `id` | integer | ID de la planification |
-
-#### Exemple de Requête
-
-```bash
-curl -X DELETE "http://127.0.0.1:8000/api/planifications/1" \
-  -H "Accept: application/json"
-```
-
-#### Réponse Attendue (204 No Content)
-
-Pas de contenu dans la réponse.
-
-#### Erreurs Possibles
-
-- **404 Not Found** : Planification introuvable
-- **409 Conflict** : Planification déjà publiée (non supprimable)
-
----
-
-### 6. Générer Automatiquement (⭐ PRINCIPAL)
-
-**POST** `/sessions/{session_id}/generer`
-
-Génère automatiquement les planifications pour une session.
-
-#### Paramètres Path
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `session_id` | integer | ID de la session |
-
-#### Body (JSON)
-
-```json
-{
-  "session_id": 1,
-  "session_date_debut": "2026-01-07",
-  "session_date_fin": "2026-01-15",
+  "session_date_debut": "2026-06-01",
+  "session_date_fin": "2026-06-20",
   "session_statut": "BROUILLON",
-  "mode": "AUTO",
-  "tasks": [
-    {
-      "section_id": 1,
-      "section_matiere_id": 10,
-      "matiere": "Machine Learning & Deep Learning",
-      "type_epreuve": "EXAMEN_FINAL",
-      "duree": 120,
-      "section_nb_etudiants": 53,
-      "coefficient": 2.5,
-      "nb_surveillants_requis": 2,
-      "a_examen_final": true,
-      "a_ds": true
-    }
-  ],
-  "creneaux": [
-    {
-      "date_examen": "2026-01-07",
-      "heure_debut": "08:30:00",
-      "heure_fin": "10:30:00"
-    }
-  ],
+  "duree": 120,
+  "coefficient": 2,
+  "section_nb_etudiants": 45,
+  "nb_groupes": 1,
+  "nb_surveillants_requis": 2,
+  "a_examen_final": true,
+  "a_ds": true,
   "salles": [
     {
-      "salle_id": "AMPHI-INFO",
-      "capacite": 150,
-      "batiment": "Info"
+      "salle_id": "A1",
+      "salle_capacite": 60,
+      "salle_batiment": "Bloc A",
+      "groupe_id": 1,
+      "groupe_effectif": 45
     }
   ]
 }
 ```
 
-#### Exemple de Requête
+### 4) Mettre à jour
 
-```bash
-curl -X POST "http://127.0.0.1:8000/api/sessions/1/generer" \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
-  -d @generation_request.json
-```
+- `PUT /planifications/{planif_id}`
+- Alias legacy (deprecated): `PUT /planification_examen/{planif_id}`
 
-#### Réponse Attendue (200 OK)
+### 5) Supprimer
 
-```json
-{
-  "nb_crees": 13,
-  "nb_conflits": 0,
-  "conflits": [],
-  "planifications": [
-    {
-      "id": 1,
-      "matiere": "Machine Learning & Deep Learning",
-      "date_examen": "2026-01-07",
-      "heure_debut": "08:30:00",
-      "heure_fin": "10:30:00",
-      "salles": ["AMPHI-INFO"],
-      "nb_groupes": 1
-    }
-  ]
-}
-```
+- `DELETE /planifications/{planif_id}`
+- Alias legacy (deprecated): `DELETE /planification_examen/{planif_id}`
 
-#### Réponse avec Conflits (200 OK)
+### 6) Générer automatiquement
+
+- `POST /sessions/{session_id}/generer`
+- Alias legacy (deprecated): `POST /sessions/{session_id}/planification_examen/generer`
+
+Body: `GenerationRequest`
+
+Réponse:
 
 ```json
 {
   "nb_crees": 10,
-  "nb_conflits": 3,
-  "conflits": [
-    "[C12] Section-1 / Optimisation Combinatoire - Subject already planned",
-    "[C1] Section-2 / Physique - No available room",
-    "[C7] Section-3 / Mathématiques - Section already has exam at this time"
-  ],
-  "planifications": [...]
+  "nb_conflits": 0,
+  "conflits": []
 }
 ```
 
----
+### 7) Emploi du temps d'une session
 
-### 7. Récupérer l'Emploi du Temps
+- `GET /sessions/{session_id}/emploi-du-temps`
+- Alias legacy (deprecated): `GET /sessions/{session_id}/planification_examen/emploi-du-temps`
 
-**GET** `/sessions/{session_id}/emploi-du-temps`
+Query params optionnels:
+- `section_id`
+- `type_epreuve`
+- `statut`
 
-Récupère l'emploi du temps complet d'une session.
+### 8) Affectation manuelle des salles
 
-#### Paramètres Path
+- `POST /planifications/{planif_id}/salles`
+- Alias legacy (deprecated): `POST /planification_examen/{planif_id}/salles`
 
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `session_id` | integer | ID de la session |
-
-#### Paramètres Query (optionnels)
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `section_id` | integer | Filtrer par section |
-| `type_epreuve` | string | Filtrer par type |
-
-#### Exemple de Requête
-
-```bash
-curl -X GET "http://127.0.0.1:8000/api/sessions/1/emploi-du-temps?section_id=1" \
-  -H "Accept: application/json"
-```
-
-#### Réponse Attendue (200 OK)
+Body attendu: **liste JSON** de `PlanifSalleAssign` (pas un objet enveloppe)
 
 ```json
 [
   {
-    "date_examen": "2026-01-07",
-    "examens": [
-      {
-        "heure_debut": "08:30:00",
-        "heure_fin": "10:30:00",
-        "matiere": "Machine Learning & Deep Learning",
-        "section": "IGL4",
-        "type_epreuve": "EXAMEN_FINAL",
-        "salles": [
-          {
-            "code": "AMPHI-INFO",
-            "capacite": 150,
-            "effectif": 53,
-            "groupe": 1
-          }
-        ],
-        "nb_groupes": 1,
-        "statut": "BROUILLON"
-      }
-    ]
+    "salle_id": "A1",
+    "salle_capacite": 60,
+    "salle_batiment": "Bloc A",
+    "groupe_id": 1,
+    "groupe_effectif": 30
+  },
+  {
+    "salle_id": "A2",
+    "salle_capacite": 40,
+    "salle_batiment": "Bloc A",
+    "groupe_id": 2,
+    "groupe_effectif": 15
   }
 ]
 ```
 
----
+### 9) Changement de statut
 
-### 8. Valider une Planification
+- `POST /planifications/{planif_id}/valider`
+- `POST /planifications/{planif_id}/publier`
+- Alias legacy (deprecated):
+  - `POST /planification_examen/{planif_id}/valider`
+  - `POST /planification_examen/{planif_id}/publier`
 
-**POST** `/planifications/{id}/valider`
+## Codes HTTP
 
-Change le statut d'une planification de BROUILLON à VALIDEE.
+- `200` OK
+- `201` Created
+- `204` No Content
+- `404` Not Found
+- `409` Conflict
+- `422` Validation error
 
-#### Paramètres Path
+## Références techniques
 
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `id` | integer | ID de la planification |
-
-#### Exemple de Requête
-
-```bash
-curl -X POST "http://127.0.0.1:8000/api/planifications/1/valider" \
-  -H "Accept: application/json"
-```
-
-#### Réponse Attendue (200 OK)
-
-```json
-{
-  "id": 1,
-  "statut": "VALIDEE",
-  "date_validation": "2026-01-07T10:30:00",
-  ...
-}
-```
-
----
-
-### 9. Publier une Planification
-
-**POST** `/planifications/{id}/publier`
-
-Change le statut d'une planification de VALIDEE à PUBLIEE.
-
-#### Paramètres Path
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `id` | integer | ID de la planification |
-
-#### Exemple de Requête
-
-```bash
-curl -X POST "http://127.0.0.1:8000/api/planifications/1/publier" \
-  -H "Accept: application/json"
-```
-
-#### Réponse Attendue (200 OK)
-
-```json
-{
-  "id": 1,
-  "statut": "PUBLIEE",
-  "date_publication": "2026-01-07T11:00:00",
-  ...
-}
-```
-
----
-
-### 10. Affecter des Salles
-
-**POST** `/planifications/{id}/salles`
-
-Affecte ou modifie les salles d'une planification.
-
-#### Paramètres Path
-
-| Paramètre | Type | Description |
-|-----------|------|-------------|
-| `id` | integer | ID de la planification |
-
-#### Body (JSON)
-
-```json
-{
-  "salles": [
-    {
-      "salle_id": "S30A",
-      "groupe_numero": 1,
-      "groupe_effectif": 27
-    },
-    {
-      "salle_id": "S30B",
-      "groupe_numero": 2,
-      "groupe_effectif": 26
-    }
-  ]
-}
-```
-
-#### Exemple de Requête
-
-```bash
-curl -X POST "http://127.0.0.1:8000/api/planifications/1/salles" \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json" \
-  -d '{
-    "salles": [
-      {"salle_id": "S30A", "groupe_numero": 1, "groupe_effectif": 27},
-      {"salle_id": "S30B", "groupe_numero": 2, "groupe_effectif": 26}
-    ]
-  }'
-```
-
-#### Réponse Attendue (200 OK)
-
-```json
-{
-  "id": 1,
-  "nb_groupes": 2,
-  "salles": [
-    {
-      "salle_id": "S30A",
-      "groupe_numero": 1,
-      "groupe_effectif": 27
-    },
-    {
-      "salle_id": "S30B",
-      "groupe_numero": 2,
-      "groupe_effectif": 26
-    }
-  ]
-}
-```
-
----
-
-## 📊 Codes de Statut HTTP
-
-| Code | Signification | Quand |
-|------|---------------|-------|
-| 200 | OK | Requête réussie |
-| 201 | Created | Ressource créée |
-| 204 | No Content | Suppression réussie |
-| 400 | Bad Request | Données invalides |
-| 404 | Not Found | Ressource introuvable |
-| 409 | Conflict | Contrainte violée |
-| 422 | Unprocessable Entity | Validation échouée |
-| 500 | Internal Server Error | Erreur serveur |
-
----
-
-## 🔧 Modèles de Données
-
-### Planification
-
-```typescript
-interface Planification {
-  id: number;
-  session_id: number;
-  section_id: number;
-  section_matiere_id: number;
-  type_epreuve: "EXAMEN_FINAL" | "DS" | "RATTRAPAGE";
-  date_examen: string; // Format: YYYY-MM-DD
-  heure_debut: string; // Format: HH:MM:SS
-  heure_fin: string; // Format: HH:MM:SS
-  duree: number; // En minutes
-  statut: "BROUILLON" | "VALIDEE" | "PUBLIEE";
-  nb_groupes: number;
-  salles: PlanifSalle[];
-  matiere?: Matiere;
-  section?: Section;
-}
-```
-
-### PlanifSalle
-
-```typescript
-interface PlanifSalle {
-  id: number;
-  planification_id: number;
-  salle_id: string;
-  salle_code: string;
-  salle_designation: string;
-  salle_capacite: number;
-  groupe_numero: number;
-  groupe_effectif: number;
-}
-```
-
-### GenerationRequest
-
-```typescript
-interface GenerationRequest {
-  session_id: number;
-  session_date_debut: string;
-  session_date_fin: string;
-  session_statut: string;
-  mode: "AUTO" | "MANUAL";
-  tasks: Task[];
-  creneaux: Creneau[];
-  salles: Salle[];
-}
-```
-
----
-
-## 🧪 Exemples d'Utilisation
-
-### Scénario 1 : Génération Complète
-
-```bash
-# 1. Générer automatiquement
-curl -X POST "http://127.0.0.1:8000/api/sessions/1/generer" \
-  -H "Content-Type: application/json" \
-  -d @generation_data.json
-
-# 2. Récupérer l'emploi du temps
-curl "http://127.0.0.1:8000/api/sessions/1/emploi-du-temps" | jq
-
-# 3. Valider toutes les planifications
-for id in {1..13}; do
-  curl -X POST "http://127.0.0.1:8000/api/planifications/$id/valider"
-done
-
-# 4. Publier
-for id in {1..13}; do
-  curl -X POST "http://127.0.0.1:8000/api/planifications/$id/publier"
-done
-```
-
-### Scénario 2 : Modification Manuelle
-
-```bash
-# 1. Lister les planifications
-curl "http://127.0.0.1:8000/api/planifications?session_id=1"
-
-# 2. Modifier une planification
-curl -X PUT "http://127.0.0.1:8000/api/planifications/5" \
-  -H "Content-Type: application/json" \
-  -d '{"date_examen": "2026-01-08"}'
-
-# 3. Changer les salles
-curl -X POST "http://127.0.0.1:8000/api/planifications/5/salles" \
-  -H "Content-Type: application/json" \
-  -d '{"salles": [{"salle_id": "AMPHI-INFO", "groupe_numero": 1, "groupe_effectif": 53}]}'
-```
-
----
-
-## 📞 Support
-
-- **Documentation Swagger** : http://127.0.0.1:8000/docs
-- **Documentation ReDoc** : http://127.0.0.1:8000/redoc
-- **Health Check** : http://127.0.0.1:8000/health
-
----
-
-**📡 API complète et documentée !**
+- Router: `app/routers/planifications.py`
+- Schémas: `app/schemas/planification.py`
+- Service: `app/services/planif_service.py`
+- CRUD: `app/crud/crud_planif.py`

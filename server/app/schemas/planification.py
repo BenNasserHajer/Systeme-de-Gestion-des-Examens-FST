@@ -32,6 +32,7 @@ class PlanifSalleBase(BaseModel):
     salle_id: str = Field(min_length=1, max_length=80)
     salle_capacite: int = Field(ge=1)
     salle_batiment: str | None = Field(default=None, max_length=64)
+    salle_departement_id: int | None = Field(default=None, ge=1)
     groupe_id: int = Field(ge=1)
     groupe_effectif: int = Field(ge=1)
 
@@ -52,6 +53,7 @@ class PlanificationBase(BaseModel):
     session_id: int = Field(ge=1)
     section_id: int = Field(ge=1)
     section_matiere_id: int = Field(ge=1)
+    section_departement_id: int | None = Field(default=None, ge=1)
     matiere: str = Field(min_length=2, max_length=120)
 
     type_epreuve: TypeEpreuve = TypeEpreuve.EXAMEN_FINAL
@@ -111,7 +113,10 @@ class PlanificationOut(PlanificationBase):
 class GenerationTask(BaseModel):
     section_id: int = Field(ge=1)
     section_matiere_id: int = Field(ge=1)
+    matiere_id: int | None = Field(default=None, ge=1)
     matiere: str = Field(min_length=2, max_length=120)
+    semestre: str = Field(default="S1", min_length=1, max_length=10)
+    section_departement_id: int | None = Field(default=None, ge=1)
     type_epreuve: TypeEpreuve
     duree: int = Field(ge=1)
     section_nb_etudiants: int = Field(ge=1)
@@ -131,13 +136,17 @@ class GenerationSalle(BaseModel):
     salle_id: str = Field(min_length=1, max_length=80)
     capacite: int = Field(ge=1)
     batiment: str | None = Field(default=None, max_length=64)
+    departement_id: int | None = Field(default=None, ge=1)
 
 
 class GenerationRequest(BaseModel):
     session_id: int = Field(ge=1)
+    annee_universitaire: str | None = Field(default=None, max_length=10)
     session_date_debut: date
     session_date_fin: date
     session_statut: StatutSession = StatutSession.BROUILLON
+    semestre: str = Field(default="S1", min_length=1, max_length=10)
+    scope_section_ids: list[int] = Field(default_factory=list)
     mode: ModeAffectation = ModeAffectation.AUTO
     tasks: list[GenerationTask] = Field(default_factory=list)
     creneaux: list[GenerationCreneau] = Field(default_factory=list)

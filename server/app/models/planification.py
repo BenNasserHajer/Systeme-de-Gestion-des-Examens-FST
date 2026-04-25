@@ -23,6 +23,7 @@ class Planification(Base):
     session_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     section_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     section_matiere_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    section_departement_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     matiere: Mapped[str] = mapped_column(String(120), nullable=False)
     type_epreuve: Mapped[str] = mapped_column(String(24), nullable=False, default="EXAMEN_FINAL")
@@ -82,6 +83,7 @@ class PlanifSalle(Base):
     salle_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     salle_capacite: Mapped[int] = mapped_column(Integer, nullable=False)
     salle_batiment: Mapped[str] = mapped_column(String(64), nullable=True)
+    salle_departement_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     groupe_id: Mapped[int] = mapped_column(Integer, nullable=False)
     groupe_effectif: Mapped[int] = mapped_column(Integer, nullable=False)

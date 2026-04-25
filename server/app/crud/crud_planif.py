@@ -18,6 +18,8 @@ def list_planifications(
     session_id: int | None = None,
     section_id: int | None = None,
     date_examen: date | None = None,
+    type_epreuve: str | None = None,
+    statut: str | None = None,
     skip: int = 0,
     limit: int = 50,
 ) -> list[Planification]:
@@ -28,6 +30,10 @@ def list_planifications(
         query = query.filter(Planification.section_id == section_id)
     if date_examen is not None:
         query = query.filter(Planification.date_examen == date_examen)
+    if type_epreuve is not None:
+        query = query.filter(Planification.type_epreuve == type_epreuve)
+    if statut is not None:
+        query = query.filter(Planification.statut == statut)
 
     return (
         query.order_by(Planification.date_examen.asc(), Planification.heure_debut.asc())
@@ -55,6 +61,7 @@ def _build_planif_salle_rows(
             salle_id=item.salle_id,
             salle_capacite=item.salle_capacite,
             salle_batiment=item.salle_batiment,
+            salle_departement_id=item.salle_departement_id,
             groupe_id=item.groupe_id,
             groupe_effectif=item.groupe_effectif,
             creneau_date=planif.date_examen,
@@ -69,6 +76,7 @@ def create_planification(db: Session, payload: PlanificationCreate) -> Planifica
         session_id=payload.session_id,
         section_id=payload.section_id,
         section_matiere_id=payload.section_matiere_id,
+        section_departement_id=payload.section_departement_id,
         matiere=payload.matiere,
         type_epreuve=payload.type_epreuve.value,
         date_examen=payload.date_examen,
@@ -142,12 +150,27 @@ def delete_planification(db: Session, planif: Planification) -> None:
 
 
 def get_emploi_du_temps(db: Session, session_id: int) -> list[Planification]:
-    return (
-        _query_planification_base(db)
-        .filter(Planification.session_id == session_id)
-        .order_by(Planification.date_examen.asc(), Planification.heure_debut.asc(), Planification.id.asc())
-        .all()
-    )
+    return get_emploi_du_temps_filtre(db, session_id=session_id)
+
+
+def get_emploi_du_temps_filtre(
+    db: Session,
+    *,
+    session_id: int,
+    section_id: int | None = None,
+    type_epreuve: str | None = None,
+    statut: str | None = None,
+) -> list[Planification]:
+    query = _query_planification_base(db).filter(Planification.session_id == session_id)
+
+    if section_id is not None:
+        query = query.filter(Planification.section_id == section_id)
+    if type_epreuve is not None:
+        query = query.filter(Planification.type_epreuve == type_epreuve)
+    if statut is not None:
+        query = query.filter(Planification.statut == statut)
+
+    return query.order_by(Planification.date_examen.asc(), Planification.heure_debut.asc(), Planification.id.asc()).all()
 
 
 def get_salles_disponibles(

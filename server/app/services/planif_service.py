@@ -2,6 +2,7 @@
 
 from datetime import date
 
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.algorithms.contraintes import build_default_engine
@@ -9,7 +10,7 @@ from app.algorithms.planif_auto import generer
 from app.crud.crud_planif import (
     create_planification,
     delete_planification,
-    get_emploi_du_temps,
+    get_emploi_du_temps_filtre,
     get_planification,
     list_existing_for_session,
     list_planifications,
@@ -24,6 +25,8 @@ from app.schemas.planification import (
     PlanificationCreate,
     PlanificationUpdate,
     StatutPlanification,
+    StatutSession,
+    TypeEpreuve,
 )
 
 
@@ -48,6 +51,8 @@ class PlanifService:
         session_id: int | None = None,
         section_id: int | None = None,
         date_examen: date | None = None,
+        type_epreuve: TypeEpreuve | None = None,
+        statut: StatutPlanification | None = None,
         skip: int = 0,
         limit: int = 50,
     ) -> list[Planification]:
@@ -56,6 +61,8 @@ class PlanifService:
             session_id=session_id,
             section_id=section_id,
             date_examen=date_examen,
+            type_epreuve=type_epreuve.value if type_epreuve is not None else None,
+            statut=statut.value if statut is not None else None,
             skip=skip,
             limit=limit,
         )
@@ -79,6 +86,7 @@ class PlanifService:
                 "existing_planifs": existing,
                 "exclude_planif_id": exclude_planif_id,
                 "known_section_matiere_ids": None,
+                "section_departement_id": payload.section_departement_id,
             },
             self.db,
         )
@@ -90,6 +98,38 @@ class PlanifService:
         warnings = self._validate_payload(payload)
         created = create_planification(self.db, payload)
         return created, warnings
+
+    def _resolve_session_context(self, request: GenerationRequest) -> GenerationRequest:
+        inspector = inspect(self.db.bind)
+        if not inspector.has_table("session"):
+            return request
+
+        row = self.db.execute(
+            text(
+                """
+                SELECT id, annee_universitaire, date_debut, date_fin, statut
+                FROM session
+                WHERE id = :session_id
+                """
+            ),
+            {"session_id": request.session_id},
+        ).mappings().first()
+
+        if row is None:
+            raise ConstraintViolationError(f"[C16] session {request.session_id} introuvable")
+
+        statut = str(row["statut"]).upper()
+        if statut not in {"BROUILLON", "VALIDEE"}:
+            raise ConstraintViolationError("[C17] session publiee, generation impossible")
+
+        return request.model_copy(
+            update={
+                "annee_universitaire": row.get("annee_universitaire"),
+                "session_date_debut": row["date_debut"],
+                "session_date_fin": row["date_fin"],
+                "session_statut": StatutSession(statut),
+            }
+        )
 
     def update(self, planif_id: int, payload: PlanificationUpdate) -> tuple[Planification, list[str]]:
         planif = self.get_by_id(planif_id)
@@ -137,13 +177,15 @@ class PlanifService:
         delete_planification(self.db, planif)
 
     def generer_planifications(self, request: GenerationRequest) -> GenerationResult:
+        request = self._resolve_session_context(request)
         existing = list_existing_for_session(self.db, request.session_id)
+        known_section_matiere_ids = {item.section_matiere_id for item in request.tasks} or None
         creates, result = generer(
             request,
             self.engine,
             existing,
             self.db,
-            known_section_matiere_ids=None,
+            known_section_matiere_ids=known_section_matiere_ids,
         )
         for payload in creates:
             create_planification(self.db, payload)
@@ -176,8 +218,21 @@ class PlanifService:
         updated = replace_planif_salles(self.db, planif, salles)
         return updated, warnings
 
-    def get_emploi_du_temps(self, session_id: int) -> list[Planification]:
-        return get_emploi_du_temps(self.db, session_id)
+    def get_emploi_du_temps(
+        self,
+        session_id: int,
+        *,
+        section_id: int | None = None,
+        type_epreuve: TypeEpreuve | None = None,
+        statut: StatutPlanification | None = None,
+    ) -> list[Planification]:
+        return get_emploi_du_temps_filtre(
+            self.db,
+            session_id=session_id,
+            section_id=section_id,
+            type_epreuve=type_epreuve.value if type_epreuve is not None else None,
+            statut=statut.value if statut is not None else None,
+        )
 
     def valider_planification(self, planif_id: int) -> Planification:
         planif = self.get_by_id(planif_id)
