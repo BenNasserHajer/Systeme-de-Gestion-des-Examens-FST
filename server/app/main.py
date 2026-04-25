@@ -8,10 +8,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.database import Base, SessionLocal, check_connection, engine, get_db
+from app.database import (
+    Base,
+    SessionLocal,
+    check_connection,
+    engine,
+    get_db,
+)
+
+# IMPORTANT: on charge les modèles pour create_all()
 from app.models import planification as _planification_model  # noqa: F401
 from app.models import surveillance as _surveillance_model  # noqa: F401
+from app.models import salle as _salle_model  # noqa: F401
+
+# API ROUTER GLOBAL
 from app.routers import api_router
+
 
 app = FastAPI(
     title=settings.app_name,
@@ -21,21 +33,31 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+# -----------------------------
+# CORS
+# -----------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    allow_origins=[settings.frontend_origin],  # ex: http://localhost:3000
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# -----------------------------
+# ROUTES
+# -----------------------------
 app.include_router(api_router, prefix="/api")
 
 
+# -----------------------------
+# STARTUP
+# -----------------------------
 @app.on_event("startup")
 async def startup_event() -> None:
-    """Initialize tables and validate DB connectivity at startup."""
+    """Initialize DB at startup."""
     Base.metadata.create_all(bind=engine)
+
     db = SessionLocal()
     try:
         connected = check_connection(db)
@@ -45,12 +67,18 @@ async def startup_event() -> None:
         db.close()
 
 
+# -----------------------------
+# SHUTDOWN
+# -----------------------------
 @app.on_event("shutdown")
 async def shutdown_event() -> None:
-    """Release DB resources on app shutdown."""
+    """Clean shutdown."""
     engine.dispose()
 
 
+# -----------------------------
+# ROOT
+# -----------------------------
 @app.get("/")
 async def root() -> dict[str, Any]:
     return {
@@ -62,9 +90,13 @@ async def root() -> dict[str, Any]:
     }
 
 
+# -----------------------------
+# HEALTH CHECK
+# -----------------------------
 @app.get("/health")
 async def health_check(db: Session = Depends(get_db)) -> dict[str, Any]:
     is_db_connected = check_connection(db)
+
     return {
         "status": "ok" if is_db_connected else "degraded",
         "database": "connected" if is_db_connected else "disconnected",

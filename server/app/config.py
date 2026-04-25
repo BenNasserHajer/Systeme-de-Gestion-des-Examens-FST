@@ -15,7 +15,7 @@ class Settings:
 
     database_url: str = os.getenv(
         "DATABASE_URL",
-        "postgresql://postgres:password@localhost:5432/mydb",
+        "postgresql://postgres:ahlem2003@localhost:5432/pfa_examens",
     )
     database_pool_size: int = int(os.getenv("DATABASE_POOL_SIZE", "10"))
     database_max_overflow: int = int(os.getenv("DATABASE_MAX_OVERFLOW", "20"))
