@@ -1,1294 +1,37 @@
-# # """Surveillance endpoints - API routes for surveillance management."""
-
-# # from typing import Optional
-# # from fastapi import APIRouter, Depends, HTTPException, Query
-# # from fastapi.responses import FileResponse, StreamingResponse
-# # from sqlalchemy.orm import Session
-# # import csv
-# # from io import StringIO, BytesIO
-# # from datetime import datetime
-
-# # from app.database import get_db
-# # from app.services.surv_service import SurvService
-# # from app.schemas.surveillance_schema import (
-# #     SurveillanceCreate,
-# #     SurveillanceUpdate,
-# #     SurveillanceOut,
-# #     ManualAssignmentRequest,
-# #     ManualAssignmentBatchRequest,
-# #     ManualAssignmentResponse,
-# #     ManualAssignmentBatchResponse,
-# #     RemplacementRequest,
-# #     RemplacementResponse,
-# #     EnseignantsDisponiblesResponse,
-# #     EnseignantDisponible,
-# # )
-
-# # router = APIRouter(prefix="/surveillances", tags=["surveillances"])
-
-
-# # # ============================================================================
-# # # AUTOMATIC AFFECTATION ENDPOINTS
-# # # ============================================================================
-
-
-# # @router.post("/affecter-session")
-# # def affecter_session_automatique(
-# #     payload: dict = None,
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """
-# #     POST /surveillances/affecter-session
-# #     Lancer l'affectation automatique pour toutes les planifications VALIDEE.
-# #     """
-# #     if not payload or "session_id" not in payload:
-# #         raise HTTPException(status_code=400, detail="session_id requis")
-
-# #     session_id = payload["session_id"]
-# #     service = SurvService(db)
-
-# #     try:
-# #         results, message = service.affecter_session_automatique(session_id)
-
-# #         # Compter les affectées et conflits
-# #         affectees = sum(1 for r in results if r.statut == "AFFECTEE")
-# #         conflits = sum(1 for r in results if r.statut == "CONFLIT")
-
-# #         return {
-# #             "session_id": session_id,
-# #             "total_planifications": len(results),
-# #             "affectees_automatiquement": affectees,
-# #             "en_conflit": conflits,
-# #             "message": message,
-# #             "resultats": [
-# #                 {
-# #                     "planification_id": r.planification_id,
-# #                     "statut": r.statut,
-# #                     "surveillants_requis": r.surveillants_requis,
-# #                     "surveillants_affectes": len(r.surveillants_affectes),
-# #                     "manquants": r.manquants,
-# #                     "raisons_exclusion": [
-# #                         {
-# #                             "enseignant_id": v.enseignant_id,
-# #                             "nom": v.nom,
-# #                             "prenom": v.prenom,
-# #                             "raison": v.raison.value,
-# #                         }
-# #                         for v in r.violations
-# #                     ] if r.violations else [],
-# #                 }
-# #                 for r in results
-# #             ],
-# #         }
-# #     except Exception as e:
-# #         raise HTTPException(status_code=400, detail=str(e))
-
-
-# # # ============================================================================
-# # # MANUAL AFFECTATION ENDPOINTS
-# # # ============================================================================
-
-
-# # @router.post("/manual-assignment")
-# # def manual_assignment_single(
-# #     request: ManualAssignmentRequest,
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """
-# #     POST /surveillances/manual-assignment
-# #     Affectation manuelle d'une planification en conflit.
-# #     """
-# #     service = SurvService(db)
-
-# #     try:
-# #         result = service.affecter_planification_manuellement(request)
-# #         return {
-# #             "planification_id": result["planification_id"],
-# #             "statut": result["statut"],
-# #             "surveillants_inseres": result["surveillants_inseres"],
-# #         }
-# #     except ValueError as e:
-# #         raise HTTPException(status_code=409, detail=str(e))
-# #     except Exception as e:
-# #         raise HTTPException(status_code=400, detail=str(e))
-
-
-# # @router.post("/manual-assignment-batch")
-# # def manual_assignment_batch(
-# #     request: ManualAssignmentBatchRequest,
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """
-# #     POST /surveillances/manual-assignment-batch
-# #     Affectation manuelle totale d'une session.
-# #     """
-# #     service = SurvService(db)
-
-# #     try:
-# #         result = service.affecter_session_manuellement(request)
-# #         return {
-# #             "session_id": result["session_id"],
-# #             "statut": result["statut"],
-# #             "total_surveillances_inserees": result["total_surveillances_inserees"],
-# #         }
-# #     except ValueError as e:
-# #         raise HTTPException(status_code=409, detail=str(e))
-# #     except Exception as e:
-# #         raise HTTPException(status_code=400, detail=str(e))
-
-
-# # # ============================================================================
-# # # CONSULTATION ENDPOINTS
-# # # ============================================================================
-
-
-# # @router.get("/{session_id}")
-# # def get_session_surveillances(
-# #     session_id: int,
-# #     skip: int = Query(0, ge=0),
-# #     limit: int = Query(50, ge=1, le=100),
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """
-# #     GET /surveillances/{session_id}
-# #     Récupérer toutes les surveillances d'une session.
-# #     """
-# #     service = SurvService(db)
-# #     surveillances = service.get_all_surveillances(
-# #         session_id=session_id,
-# #         skip=skip,
-# #         limit=limit,
-# #     )
-
-# #     return {
-# #         "total": len(surveillances),
-# #         "data": [
-# #             {
-# #                 "id": s.id,
-# #                 "planification_id": s.planification_id,
-# #                 "enseignant_id": s.enseignant_id,
-# #                 "charge": float(s.charge),
-# #                 "est_externe": s.est_externe,
-# #                 "motif_externe": s.motif_externe,
-# #                 "mode_affectation": s.mode_affectation,
-# #                 "statut_surveillance": s.statut_surveillance,
-# #             }
-# #             for s in surveillances
-# #         ],
-# #     }
-
-
-# # @router.get("/getallsurveillants")
-# # def get_all_surveillants(
-# #     session_id: int = Query(..., description="ID de la session"),
-# #     page: int = Query(1, ge=1),
-# #     limit: int = Query(20, ge=1, le=100),
-# #     sort: str = Query("volume_restant"),
-# #     order: str = Query("desc", regex="^(asc|desc)$"),
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """
-# #     GET /surveillances/getallsurveillants
-# #     Récupérer tous les enseignants disponibles pour affectation.
-# #     """
-# #     from app.models.session import Session as SessionModel
-    
-# #     session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-# #     if not session:
-# #         raise HTTPException(status_code=404, detail="Session non trouvée")
-
-# #     service = SurvService(db)
-
-# #     # Récupérer tous les enseignants
-# #     from app.models.enseignant import Enseignant
-# #     enseignants = db.query(Enseignant).all()
-
-# #     disponibles = []
-# #     for ens in enseignants:
-# #         volume_info = service.get_volume_restant_enseignant(
-# #             ens.id,
-# #             session.annee_universitaire,
-# #         )
-
-# #         disponibles.append({
-# #             "enseignant_id": ens.id,
-# #             "nom": ens.nom,
-# #             "prenom": ens.prenom,
-# #             "grade": ens.grade,
-# #             "departement": {
-# #                 "id": ens.departement_id,
-# #                 "nom": ens.departement.nom if ens.departement else "Unknown",
-# #                 "code": ens.departement.code if ens.departement else "UNK",
-# #             },
-# #             "volume_horaire": volume_info["volume_horaire"],
-# #             "volume_consomme": volume_info["volume_consomme"],
-# #             "volume_restant": volume_info["volume_restant"],
-# #             "nb_surveillances": volume_info["nb_surveillances"],
-# #         })
-
-# #     # Trier
-# #     reverse = order == "desc"
-# #     disponibles.sort(key=lambda x: x.get(sort, 0), reverse=reverse)
-
-# #     # Paginer
-# #     start = (page - 1) * limit
-# #     end = start + limit
-# #     paginated = disponibles[start:end]
-
-# #     return {
-# #         "data": paginated,
-# #         "pagination": {
-# #             "page": page,
-# #             "limit": limit,
-# #             "total": len(disponibles),
-# #             "pages": (len(disponibles) + limit - 1) // limit,
-# #         },
-# #     }
-
-
-# # @router.get("/disponibles/{planif_id}")
-# # def get_enseignants_disponibles(
-# #     planif_id: int,
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """
-# #     GET /surveillances/disponibles/{planif_id}
-# #     Récupérer les enseignants disponibles pour une planification (résolution conflit).
-# #     Applique uniquement les contraintes 1 et 4.
-# #     """
-# #     service = SurvService(db)
-# #     disponibles = service.get_enseignants_disponibles_pour_planification(planif_id)
-
-# #     return {
-# #         "planification_id": planif_id,
-# #         "total": len(disponibles),
-# #         "data": [
-# #             {
-# #                 "enseignant_id": d.enseignant_id,
-# #                 "nom": d.nom,
-# #                 "prenom": d.prenom,
-# #                 "grade": d.grade,
-# #                 "departement": d.departement,
-# #                 "volume_horaire": d.volume_horaire,
-# #                 "volume_consomme": d.volume_consomme,
-# #                 "volume_restant": d.volume_restant,
-# #                 "nb_surveillances": d.nb_surveillances,
-# #             }
-# #             for d in disponibles
-# #         ],
-# #     }
-
-
-# # # ============================================================================
-# # # DETAIL ENDPOINTS
-# # # ============================================================================
-
-
-# # @router.get("/{surveillance_id}/detail")
-# # def get_surveillance_detail(
-# #     surveillance_id: int,
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """GET /surveillances/{surveillance_id}/detail"""
-# #     service = SurvService(db)
-# #     surveillance = service.get_surveillance_by_id(surveillance_id)
-
-# #     if not surveillance:
-# #         raise HTTPException(status_code=404, detail="Surveillance non trouvée")
-
-# #     return {
-# #         "id": surveillance.id,
-# #         "planification_id": surveillance.planification_id,
-# #         "enseignant_id": surveillance.enseignant_id,
-# #         "charge": float(surveillance.charge),
-# #         "presence": surveillance.presence,
-# #         "mode_affectation": surveillance.mode_affectation,
-# #         "statut_surveillance": surveillance.statut_surveillance,
-# #         "est_externe": surveillance.est_externe,
-# #         "motif_externe": surveillance.motif_externe,
-# #         "created_at": surveillance.created_at.isoformat(),
-# #         "updated_at": surveillance.updated_at.isoformat(),
-# #     }
-
-
-# # # ============================================================================
-# # # MODIFICATION ENDPOINTS
-# # # ============================================================================
-
-
-# # @router.patch("/{surveillance_id}")
-# # def update_surveillance(
-# #     surveillance_id: int,
-# #     payload: SurveillanceUpdate,
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """PATCH /surveillances/{surveillance_id}"""
-# #     service = SurvService(db)
-
-# #     result = service.update_surveillance(surveillance_id, payload)
-# #     if not result:
-# #         raise HTTPException(status_code=404, detail="Surveillance non trouvée")
-
-# #     return {
-# #         "id": result.id,
-# #         "planification_id": result.planification_id,
-# #         "enseignant_id": result.enseignant_id,
-# #         "charge": float(result.charge),
-# #         "statut_surveillance": result.statut_surveillance,
-# #         "motif_externe": result.motif_externe,
-# #         "updated_at": result.updated_at.isoformat(),
-# #     }
-
-
-# # @router.post("/{surveillance_id}/remplacer")
-# # def replace_surveillance(
-# #     surveillance_id: int,
-# #     request: RemplacementRequest,
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """POST /surveillances/{surveillance_id}/remplacer"""
-# #     service = SurvService(db)
-
-# #     try:
-# #         old, new = service.replace_surveillance(
-# #             surveillance_id,
-# #             request.nouvel_enseignant_id,
-# #             request.motif,
-# #         )
-
-# #         return {
-# #             "ancienne_surveillance_id": old.id,
-# #             "nouvelle_surveillance_id": new.id,
-# #             "motif": request.motif,
-# #         }
-# #     except ValueError as e:
-# #         raise HTTPException(status_code=404, detail=str(e))
-# #     except Exception as e:
-# #         raise HTTPException(status_code=400, detail=str(e))
-
-
-# # # ============================================================================
-# # # DELETION ENDPOINTS
-# # # ============================================================================
-
-
-# # @router.delete("/{surveillance_id}")
-# # def delete_surveillance(
-# #     surveillance_id: int,
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """DELETE /surveillances/{surveillance_id}"""
-# #     service = SurvService(db)
-
-# #     if not service.delete_surveillance(surveillance_id):
-# #         raise HTTPException(status_code=404, detail="Surveillance non trouvée")
-
-# #     return {"message": "Surveillance supprimée avec succès"}
-
-
-# # # ============================================================================
-# # # RAPPORT & EXPORT ENDPOINTS
-# # # ============================================================================
-
-
-# # @router.get("/session/{session_id}/rapport")
-# # def get_rapport_session(
-# #     session_id: int,
-# #     departement_id: Optional[int] = None,
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """GET /surveillances/session/{session_id}/rapport"""
-# #     from app.models.session import Session as SessionModel
-
-# #     session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-# #     if not session:
-# #         raise HTTPException(status_code=404, detail="Session non trouvée")
-
-# #     service = SurvService(db)
-# #     surveillances = service.get_all_surveillances(session_id=session_id, limit=10000)
-
-# #     return {
-# #         "session_id": session_id,
-# #         "session_info": {
-# #             "type": session.type_session,
-# #             "annee_univ": session.annee_universitaire,
-# #             "date_debut": session.date_debut.isoformat(),
-# #             "date_fin": session.date_fin.isoformat(),
-# #         },
-# #         "total_surveillances": len(surveillances),
-# #         "total_externes": sum(1 for s in surveillances if s.est_externe),
-# #         "taux_externe": (sum(1 for s in surveillances if s.est_externe) / len(surveillances) * 100) if surveillances else 0,
-# #         "date_generation": datetime.now().isoformat(),
-# #     }
-
-
-# # @router.get("/session/{session_id}/export")
-# # def export_session(
-# #     session_id: int,
-# #     format: str = Query("csv", regex="^(csv|xlsx)$"),
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """GET /surveillances/session/{session_id}/export"""
-# #     service = SurvService(db)
-# #     surveillances = service.get_all_surveillances(session_id=session_id, limit=10000)
-
-# #     if format == "csv":
-# #         output = StringIO()
-# #         writer = csv.DictWriter(
-# #             output,
-# #             fieldnames=[
-# #                 "ID",
-# #                 "Planification",
-# #                 "Enseignant",
-# #                 "Charge",
-# #                 "Mode",
-# #                 "Statut",
-# #                 "Externe",
-# #                 "Motif",
-# #             ],
-# #         )
-# #         writer.writeheader()
-
-# #         for s in surveillances:
-# #             writer.writerow({
-# #                 "ID": s.id,
-# #                 "Planification": s.planification_id,
-# #                 "Enseignant": s.enseignant_id,
-# #                 "Charge": f"{s.charge:.2f}",
-# #                 "Mode": s.mode_affectation,
-# #                 "Statut": s.statut_surveillance,
-# #                 "Externe": "Oui" if s.est_externe else "Non",
-# #                 "Motif": s.motif_externe or "",
-# #             })
-
-# #         return StreamingResponse(
-# #             iter([output.getvalue()]),
-# #             media_type="text/csv",
-# #             headers={"Content-Disposition": "attachment; filename=surveillances.csv"},
-# #         )
-# #     else:
-# #         # XLSX format (simplified)
-# #         return HTTPException(status_code=501, detail="Format XLSX non implémenté")
-
-
-# # @router.get("/statistiques")
-# # def get_statistiques(
-# #     annee_univ: str = Query(..., description="Année universitaire"),
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """GET /surveillances/statistiques"""
-# #     from app.models.surveillance import Surveillance
-# #     from app.models.planification import Planification
-# #     from app.models.session import Session as SessionModel
-# #     from sqlalchemy import func
-
-# #     stats = db.query(
-# #         func.count(Surveillance.id).label("total_surveillances"),
-# #         func.sum(Surveillance.charge).label("total_heures"),
-# #         func.count(func.distinct(Surveillance.enseignant_id)).label("unique_enseignants"),
-# #         func.sum(func.cast(Surveillance.est_externe, db.Integer)).label("count_externes"),
-# #     ).join(Planification).join(SessionModel).filter(
-# #         SessionModel.annee_universitaire == annee_univ,
-# #     ).first()
-
-# #     total = stats.total_surveillances or 0
-# #     externes = stats.count_externes or 0
-
-# #     return {
-# #         "annee_universitaire": annee_univ,
-# #         "total_surveillances": total,
-# #         "total_heures": float(stats.total_heures or 0),
-# #         "unique_enseignants": stats.unique_enseignants or 0,
-# #         "count_externes": externes,
-# #         "taux_externe": (externes / total * 100) if total > 0 else 0,
-# #     }
-
-
-# # # ============================================================================
-# # # HELPER ENDPOINTS
-# # # ============================================================================
-
-
-# # @router.get("/enseignant/{enseignant_id}/disponibilites")
-# # def get_enseignant_disponibilites(
-# #     enseignant_id: int,
-# #     date_debut: str,
-# #     date_fin: str,
-# #     db: Session = Depends(get_db),
-# # ):
-# #     """GET /surveillances/enseignant/{enseignant_id}/disponibilites"""
-# #     from app.models.disponibilite_enseignant import DisponibiliteEnseignant
-# #     from datetime import datetime as dt
-
-# #     try:
-# #         start_date = dt.strptime(date_debut, "%Y-%m-%d").date()
-# #         end_date = dt.strptime(date_fin, "%Y-%m-%d").date()
-# #     except ValueError:
-# #         raise HTTPException(status_code=400, detail="Format de date invalide (YYYY-MM-DD)")
-
-# #     disponibilites = db.query(DisponibiliteEnseignant).filter(
-# #         DisponibiliteEnseignant.enseignant_id == enseignant_id,
-# #         DisponibiliteEnseignant.date >= start_date,
-# #         DisponibiliteEnseignant.date <= end_date,
-# #     ).all()
-
-# #     return {
-# #         "enseignant_id": enseignant_id,
-# #         "date_debut": date_debut,
-# #         "date_fin": date_fin,
-# #         "disponibilites": [
-# #             {
-# #                 "date": d.date.isoformat(),
-# #                 "heure_debut": str(d.heure_debut),
-# #                 "heure_fin": str(d.heure_fin),
-# #                 "type": d.type_dispo,
-# #                 "motif": d.motif,
-# #             }
-# #             for d in disponibilites
-# #         ],
-# #     }
-
-
-# """Surveillance endpoints - API routes for surveillance management."""
-
-# from typing import Optional
-# from fastapi import APIRouter, Depends, HTTPException, Query
-# from fastapi.responses import StreamingResponse
-# from sqlalchemy.orm import Session
-# import csv
-# from io import StringIO
-# from datetime import datetime
-
-# from app.database import get_db
-# from app.services.surv_service import SurvService
-# from app.schemas.surveillance_schema import (
-#     SurveillanceUpdate,
-#     ManualAssignmentRequest,
-#     ManualAssignmentBatchRequest,
-#     RemplacementRequest,
-# )
-
-# # router = APIRouter(prefix="/surveillances", tags=["surveillances"])
-
-# router = APIRouter(prefix="/surveillances", tags=["Surveillance"])
-
-
-
-# # ============================================================================
-# # AUTOMATIC AFFECTATION ENDPOINTS
-# # ============================================================================
-
-
-# @router.post("/affecter-session")
-# def affecter_session_automatique(
-#     payload: dict = None,
-#     db: Session = Depends(get_db),
-# ):
-#     """
-#     POST /surveillances/affecter-session
-#     Lancer l'affectation automatique pour toutes les planifications VALIDEE.
-#     """
-#     if not payload or "session_id" not in payload:
-#         raise HTTPException(status_code=400, detail="session_id requis")
-
-#     session_id = payload["session_id"]
-#     service = SurvService(db)
-
-#     try:
-#         results, message = service.affecter_session_automatique(session_id)
-
-#         affectees = sum(1 for r in results if r.statut == "AFFECTEE")
-#         conflits = sum(1 for r in results if r.statut == "CONFLIT")
-
-#         return {
-#             "session_id": session_id,
-#             "total_planifications": len(results),
-#             "affectees_automatiquement": affectees,
-#             "en_conflit": conflits,
-#             "message": message,
-#             "resultats": [
-#                 {
-#                     "planification_id": r.planification_id,
-#                     "statut": r.statut,
-#                     "surveillants_requis": r.surveillants_requis,
-#                     "surveillants_affectes": len(r.surveillants_affectes),
-#                     "manquants": r.manquants,
-#                     "raisons_exclusion": [
-#                         {
-#                             "enseignant_id": v.enseignant_id,
-#                             "nom": v.nom,
-#                             "prenom": v.prenom,
-#                             "raison": v.raison.value,
-#                         }
-#                         for v in r.violations
-#                     ] if r.violations else [],
-#                 }
-#                 for r in results
-#             ],
-#         }
-#     except Exception as e:
-#         raise HTTPException(status_code=400, detail=str(e))
-
-
-# # ============================================================================
-# # MANUAL AFFECTATION ENDPOINTS
-# # ============================================================================
-
-
-# @router.post("/manual-assignment")
-# def manual_assignment_single(
-#     request: ManualAssignmentRequest,
-#     db: Session = Depends(get_db),
-# ):
-#     """
-#     POST /surveillances/manual-assignment
-#     Affectation manuelle d'une planification en conflit.
-#     """
-#     service = SurvService(db)
-
-#     try:
-#         result = service.affecter_planification_manuellement(request)
-#         return {
-#             "planification_id": result["planification_id"],
-#             "statut": result["statut"],
-#             "surveillants_inseres": result["surveillants_inseres"],
-#         }
-#     except ValueError as e:
-#         raise HTTPException(status_code=409, detail=str(e))
-#     except Exception as e:
-#         raise HTTPException(status_code=400, detail=str(e))
-
-
-# @router.post("/manual-assignment-batch")
-# def manual_assignment_batch(
-#     request: ManualAssignmentBatchRequest,
-#     db: Session = Depends(get_db),
-# ):
-#     """
-#     POST /surveillances/manual-assignment-batch
-#     Affectation manuelle totale d'une session.
-#     """
-#     service = SurvService(db)
-
-#     try:
-#         result = service.affecter_session_manuellement(request)
-#         return {
-#             "session_id": result["session_id"],
-#             "statut": result["statut"],
-#             "total_surveillances_inserees": result["total_surveillances_inserees"],
-#             "planifications_non_affectees": result.get("planifications_non_affectees", []),
-#             "message": result.get("message", ""),
-#         }
-#     except ValueError as e:
-#         raise HTTPException(status_code=409, detail=str(e))
-#     except Exception as e:
-#         raise HTTPException(status_code=400, detail=str(e))
-
-
-# # ============================================================================
-# # CONSULTATION ENDPOINTS
-# # ============================================================================
-
-
-# @router.get("/{session_id}")
-# def get_session_surveillances(
-#     session_id: int,
-#     skip: int = Query(0, ge=0),
-#     limit: int = Query(50, ge=1, le=100),
-#     db: Session = Depends(get_db),
-# ):
-#     """
-#     GET /surveillances/{session_id}
-#     Récupérer toutes les surveillances d'une session.
-#     """
-#     service = SurvService(db)
-#     surveillances = service.get_all_surveillances(
-#         session_id=session_id,
-#         skip=skip,
-#         limit=limit,
-#     )
-
-#     return {
-#         "total": len(surveillances),
-#         "data": [
-#             {
-#                 "id": s.id,
-#                 "planification_id": s.planification_id,
-#                 "enseignant_id": s.enseignant_id,
-#                 "charge": float(s.charge),
-#                 "est_externe": s.est_externe,
-#                 "motif_externe": s.motif_externe,
-#                 "mode_affectation": s.mode_affectation,
-#                 "statut_surveillance": s.statut_surveillance,
-#             }
-#             for s in surveillances
-#         ],
-#     }
-
-
-# @router.get("/getallsurveillants")
-# def get_all_surveillants(
-#     session_id: int = Query(..., description="ID de la session"),
-#     page: int = Query(1, ge=1),
-#     limit: int = Query(20, ge=1, le=100),
-#     sort: str = Query("volume_restant"),
-#     order: str = Query("desc", regex="^(asc|desc)$"),
-#     db: Session = Depends(get_db),
-# ):
-#     """
-#     GET /surveillances/getallsurveillants
-#     Récupérer tous les enseignants disponibles pour affectation.
-#     """
-#     from app.models.salle_session import Session as SessionModel
-    
-#     session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-#     if not session:
-#         raise HTTPException(status_code=404, detail="Session non trouvée")
-
-#     service = SurvService(db)
-
-#     from app.models.enseignant import Enseignant
-#     enseignants = db.query(Enseignant).all()
-
-#     disponibles = []
-#     for ens in enseignants:
-#         volume_info = service.get_volume_restant_enseignant(
-#             ens.id,
-#             session.annee_universitaire,
-#         )
-
-#         disponibles.append({
-#             "enseignant_id": ens.id,
-#             "nom": ens.nom,
-#             "prenom": ens.prenom,
-#             "grade": ens.grade,
-#             "departement": {
-#                 "id": ens.departement_id,
-#                 "nom": ens.departement.nom if ens.departement else "Unknown",
-#                 "code": ens.departement.code if ens.departement else "UNK",
-#             },
-#             "volume_horaire": volume_info["volume_horaire"],
-#             "volume_consomme": volume_info["volume_consomme"],
-#             "volume_restant": volume_info["volume_restant"],
-#             "nb_surveillances": volume_info["nb_surveillances"],
-#         })
-
-#     reverse = order == "desc"
-#     disponibles.sort(key=lambda x: x.get(sort, 0), reverse=reverse)
-
-#     start = (page - 1) * limit
-#     end = start + limit
-#     paginated = disponibles[start:end]
-
-#     return {
-#         "data": paginated,
-#         "pagination": {
-#             "page": page,
-#             "limit": limit,
-#             "total": len(disponibles),
-#             "pages": (len(disponibles) + limit - 1) // limit,
-#         },
-#     }
-
-
-# @router.get("/disponibles/{planif_id}")
-# def get_enseignants_disponibles(
-#     planif_id: int,
-#     db: Session = Depends(get_db),
-# ):
-#     """
-#     GET /surveillances/disponibles/{planif_id}
-#     Récupérer les enseignants disponibles pour une planification (résolution conflit).
-#     Applique uniquement les contraintes 1 et 4.
-#     """
-#     service = SurvService(db)
-#     disponibles = service.get_enseignants_disponibles_pour_planification(planif_id)
-
-#     return {
-#         "planification_id": planif_id,
-#         "total": len(disponibles),
-#         "data": [
-#             {
-#                 "enseignant_id": d.enseignant_id,
-#                 "nom": d.nom,
-#                 "prenom": d.prenom,
-#                 "grade": d.grade,
-#                 "departement": d.departement,
-#                 "volume_horaire": d.volume_horaire,
-#                 "volume_consomme": d.volume_consomme,
-#                 "volume_restant": d.volume_restant,
-#                 "nb_surveillances": d.nb_surveillances,
-#             }
-#             for d in disponibles
-#         ],
-#     }
-
-
-# # ============================================================================
-# # DETAIL ENDPOINTS
-# # ============================================================================
-
-
-# @router.get("/{surveillance_id}/detail")
-# def get_surveillance_detail(
-#     surveillance_id: int,
-#     db: Session = Depends(get_db),
-# ):
-#     """GET /surveillances/{surveillance_id}/detail"""
-#     service = SurvService(db)
-#     surveillance = service.get_surveillance_by_id(surveillance_id)
-
-#     if not surveillance:
-#         raise HTTPException(status_code=404, detail="Surveillance non trouvée")
-
-#     return {
-#         "id": surveillance.id,
-#         "planification_id": surveillance.planification_id,
-#         "enseignant_id": surveillance.enseignant_id,
-#         "charge": float(surveillance.charge),
-#         "presence": surveillance.presence,
-#         "mode_affectation": surveillance.mode_affectation,
-#         "statut_surveillance": surveillance.statut_surveillance,
-#         "est_externe": surveillance.est_externe,
-#         "motif_externe": surveillance.motif_externe,
-#         "created_at": surveillance.created_at.isoformat(),
-#         "updated_at": surveillance.updated_at.isoformat(),
-#     }
-
-
-# # ============================================================================
-# # MODIFICATION ENDPOINTS
-# # ============================================================================
-
-
-# @router.patch("/{surveillance_id}")
-# def update_surveillance(
-#     surveillance_id: int,
-#     payload: SurveillanceUpdate,
-#     db: Session = Depends(get_db),
-# ):
-#     """PATCH /surveillances/{surveillance_id}"""
-#     service = SurvService(db)
-
-#     result = service.update_surveillance(surveillance_id, payload)
-#     if not result:
-#         raise HTTPException(status_code=404, detail="Surveillance non trouvée")
-
-#     return {
-#         "id": result.id,
-#         "planification_id": result.planification_id,
-#         "enseignant_id": result.enseignant_id,
-#         "charge": float(result.charge),
-#         "statut_surveillance": result.statut_surveillance,
-#         "motif_externe": result.motif_externe,
-#         "updated_at": result.updated_at.isoformat(),
-#     }
-
-
-# @router.post("/{surveillance_id}/remplacer")
-# def replace_surveillance(
-#     surveillance_id: int,
-#     request: RemplacementRequest,
-#     db: Session = Depends(get_db),
-# ):
-#     """POST /surveillances/{surveillance_id}/remplacer"""
-#     service = SurvService(db)
-
-#     try:
-#         old, new = service.replace_surveillance(
-#             surveillance_id,
-#             request.nouvel_enseignant_id,
-#             request.motif,
-#         )
-
-#         return {
-#             "ancienne_surveillance_id": old.id,
-#             "nouvelle_surveillance_id": new.id,
-#             "motif": request.motif,
-#         }
-#     except ValueError as e:
-#         raise HTTPException(status_code=404, detail=str(e))
-#     except Exception as e:
-#         raise HTTPException(status_code=400, detail=str(e))
-
-
-# # ============================================================================
-# # DELETION ENDPOINTS
-# # ============================================================================
-
-
-# @router.delete("/{surveillance_id}")
-# def delete_surveillance(
-#     surveillance_id: int,
-#     db: Session = Depends(get_db),
-# ):
-#     """DELETE /surveillances/{surveillance_id}"""
-#     service = SurvService(db)
-
-#     if not service.delete_surveillance(surveillance_id):
-#         raise HTTPException(status_code=404, detail="Surveillance non trouvée")
-
-#     return {"message": "Surveillance supprimée avec succès"}
-
-
-# # ============================================================================
-# # RAPPORT & EXPORT ENDPOINTS
-# # ============================================================================
-
-
-# @router.get("/session/{session_id}/rapport")
-# def get_rapport_session(
-#     session_id: int,
-#     departement_id: Optional[int] = None,
-#     db: Session = Depends(get_db),
-# ):
-#     """
-#     GET /surveillances/session/{session_id}/rapport
-#     Générer un rapport complet d'affectation pour une session.
-#     """
-#     from app.models.salle_session import Session as SessionModel
-#     from app.models.planification_examen import PlanificationExamen
-#     from app.models.surveillance import Surveillance
-#     from app.models.enseignant import Enseignant, ChargeHoraire
-#     from app.models.salle_session import Creneau
-#     from app.models.section_matiere import SectionMatiere
-#     from app.models.matiere import Matiere
-#     from app.models.departement_niveau_section import Section
-#     from sqlalchemy import func
-
-#     session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-#     if not session:
-#         raise HTTPException(status_code=404, detail="Session non trouvée")
-
-#     # Récupérer les planifications avec filtrage par département
-#     query = db.query(PlanificationExamen).filter(
-#         PlanificationExamen.session_id == session_id,
-#         PlanificationExamen.statut_planif == "VALIDEE",
-#     )
-    
-#     # ✅ Appliquer le filtre departement_id
-#     if departement_id:
-#         query = query.filter(PlanificationExamen.departement_id == departement_id)
-    
-#     planifications = query.all()
-
-#     # Récupérer toutes les surveillances de la session
-#     surv_query = db.query(Surveillance).join(PlanificationExamen).filter(
-#         PlanificationExamen.session_id == session_id,
-#         PlanificationExamen.statut_planif == "VALIDEE",
-#     )
-#     if departement_id:
-#         surv_query = surv_query.filter(PlanificationExamen.departement_id == departement_id)
-#     surveillances = surv_query.all()
-
-#     # ============================================================
-#     # 1. Détail des planifications
-#     # ============================================================
-#     planifications_detail = []
-#     planifications_en_conflit = []
-    
-#     for planif in planifications:
-#         survs = [s for s in surveillances if s.planification_id == planif.id]
-        
-#         section_matiere = db.query(SectionMatiere).filter(
-#             SectionMatiere.id == planif.section_matiere_id
-#         ).first()
-#         matiere = db.query(Matiere).filter(Matiere.id == section_matiere.matiere_id).first() if section_matiere else None
-#         creneau = db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
-#         section = db.query(Section).filter(Section.id == section_matiere.section_id).first() if section_matiere else None
-        
-#         planif_data = {
-#             "planification_id": planif.id,
-#             "matiere_code": matiere.code if matiere else "N/A",
-#             "matiere_intitule": matiere.intitule if matiere else "N/A",
-#             "section_nom": section.nom if section else "N/A",
-#             "type_epreuve": planif.type_epreuve,
-#             "duree": planif.duree,
-#             "creneau": {
-#                 "date": creneau.date.isoformat() if creneau else None,
-#                 "heure_debut": str(creneau.heure_debut) if creneau else None,
-#                 "heure_fin": str(creneau.heure_fin) if creneau else None,
-#             },
-#             "nb_surveillants_requis": planif.nb_surveillants_requis,
-#             "surveillants": [
-#                 {
-#                     "enseignant_id": s.enseignant_id,
-#                     "nom": s.enseignant.nom,
-#                     "prenom": s.enseignant.prenom,
-#                     "grade": s.enseignant.grade,
-#                     "charge_imputee": float(s.charge),
-#                     "mode_affectation": s.mode_affectation,
-#                     "est_externe": s.est_externe,
-#                     "motif_externe": s.motif_externe,
-#                 }
-#                 for s in survs
-#             ],
-#         }
-        
-#         planifications_detail.append(planif_data)
-        
-#         # ✅ Vérifier si c'est un conflit
-#         if len(survs) < planif.nb_surveillants_requis:
-#             planifications_en_conflit.append({
-#                 **planif_data,
-#                 "surveillants_trouves": len(survs),
-#                 "manquants": planif.nb_surveillants_requis - len(survs),
-#             })
-
-#     # ============================================================
-#     # 2. Classement des enseignants par charge cumulée
-#     # ============================================================
-#     enseignant_charges = {}
-#     for surv in surveillances:
-#         ens_id = surv.enseignant_id
-#         if ens_id not in enseignant_charges:
-#             charge_horaire = db.query(ChargeHoraire).filter(
-#                 ChargeHoraire.enseignant_id == ens_id,
-#                 ChargeHoraire.annee_univ == session.annee_universitaire,
-#             ).first()
-#             enseignant_charges[ens_id] = {
-#                 "enseignant_id": ens_id,
-#                 "nom": surv.enseignant.nom,
-#                 "prenom": surv.enseignant.prenom,
-#                 "grade": surv.enseignant.grade,
-#                 "charge_totale": 0.0,
-#                 "nb_surveillances": 0,
-#                 "volume_horaire": charge_horaire.volume_horaire if charge_horaire else 0.0,
-#             }
-#         enseignant_charges[ens_id]["charge_totale"] += float(surv.charge)
-#         enseignant_charges[ens_id]["nb_surveillances"] += 1
-
-#     classement = []
-#     for data in enseignant_charges.values():
-#         taux_utilisation = (data["charge_totale"] / data["volume_horaire"] * 100) if data["volume_horaire"] > 0 else 0
-#         classement.append({
-#             "enseignant_id": data["enseignant_id"],
-#             "nom": data["nom"],
-#             "prenom": data["prenom"],
-#             "grade": data["grade"],
-#             "charge_totale": round(data["charge_totale"], 2),
-#             "nb_surveillances": data["nb_surveillances"],
-#             "taux_utilisation": round(taux_utilisation, 2),
-#         })
-    
-#     classement.sort(key=lambda x: x["charge_totale"], reverse=True)
-
-#     # ============================================================
-#     # 3. Statistiques
-#     # ============================================================
-#     total_planifs = len(planifications)
-#     total_completes = sum(1 for p in planifications_detail if len(p["surveillants"]) >= p["nb_surveillants_requis"])
-#     total_partielles = sum(1 for p in planifications_detail if 0 < len(p["surveillants"]) < p["nb_surveillants_requis"])
-#     total_non_affectees = sum(1 for p in planifications_detail if len(p["surveillants"]) == 0)
-
-#     return {
-#         "session": {
-#             "id": session.id,
-#             "type_session": session.type_session,
-#             "annee_univ": session.annee_universitaire,
-#             "date_debut": session.date_debut.isoformat(),
-#             "date_fin": session.date_fin.isoformat(),
-#             "statut": session.statut,
-#         },
-#         "statistiques": {
-#             "total_planifications": total_planifs,
-#             "completes": total_completes,
-#             "partielles": total_partielles,
-#             "non_affectees": total_non_affectees,
-#         },
-#         "planifications": planifications_detail,
-#         "en_conflit": planifications_en_conflit,
-#         "classement_enseignants": classement,
-#         "date_generation": datetime.now().isoformat(),
-#     }
-
-
-# @router.get("/session/{session_id}/export")
-# def export_session(
-#     session_id: int,
-#     format: str = Query("csv", regex="^(csv|xlsx)$"),
-#     db: Session = Depends(get_db),
-# ):
-#     """GET /surveillances/session/{session_id}/export"""
-#     service = SurvService(db)
-#     surveillances = service.get_all_surveillances(session_id=session_id, limit=10000)
-
-#     if format == "csv":
-#         output = StringIO()
-#         writer = csv.DictWriter(
-#             output,
-#             fieldnames=["ID", "Planification", "Enseignant", "Charge", "Mode", "Statut", "Externe", "Motif"],
-#         )
-#         writer.writeheader()
-
-#         for s in surveillances:
-#             writer.writerow({
-#                 "ID": s.id,
-#                 "Planification": s.planification_id,
-#                 "Enseignant": s.enseignant_id,
-#                 "Charge": f"{s.charge:.2f}",
-#                 "Mode": s.mode_affectation,
-#                 "Statut": s.statut_surveillance,
-#                 "Externe": "Oui" if s.est_externe else "Non",
-#                 "Motif": s.motif_externe or "",
-#             })
-
-#         return StreamingResponse(
-#             iter([output.getvalue()]),
-#             media_type="text/csv",
-#             headers={"Content-Disposition": "attachment; filename=surveillances.csv"},
-#         )
-#     else:
-#         raise HTTPException(status_code=501, detail="Format XLSX non implémenté")
-
-
-# @router.get("/statistiques")
-# def get_statistiques(
-#     annee_univ: str = Query(..., description="Année universitaire"),
-#     db: Session = Depends(get_db),
-# ):
-#     """GET /surveillances/statistiques"""
-#     from app.models.surveillance import Surveillance
-#     from app.models.planification_examen import PlanificationExamen
-#     from app.models.salle_session import Session as SessionModel
-#     from sqlalchemy import func
-
-#     stats = db.query(
-#         func.count(Surveillance.id).label("total_surveillances"),
-#         func.sum(Surveillance.charge).label("total_heures"),
-#         func.count(func.distinct(Surveillance.enseignant_id)).label("unique_enseignants"),
-#         func.sum(func.cast(Surveillance.est_externe, db.Integer)).label("count_externes"),
-#     ).join(PlanificationExamen).join(SessionModel).filter(
-#         SessionModel.annee_universitaire == annee_univ,
-#     ).first()
-
-#     # ✅ Calcul du nombre total de surveillances REQUISES
-#     total_requis = db.query(func.sum(PlanificationExamen.nb_surveillants_requis)).join(
-#         SessionModel
-#     ).filter(
-#         SessionModel.annee_universitaire == annee_univ,
-#         PlanificationExamen.statut_planif == "VALIDEE",
-#     ).scalar() or 0
-
-#     total = stats.total_surveillances or 0
-#     externes = stats.count_externes or 0
-    
-#     # ✅ Calcul du taux de remplissage
-#     taux_remplissage = (total / total_requis * 100) if total_requis > 0 else 0
-
-#     return {
-#         "annee_universitaire": annee_univ,
-#         "total_surveillances": total,
-#         "total_heures": float(stats.total_heures or 0),
-#         "unique_enseignants": stats.unique_enseignants or 0,
-#         "count_externes": externes,
-#         "taux_externe": (externes / total * 100) if total > 0 else 0,
-#         "taux_remplissage": round(taux_remplissage, 2),
-#     }
-
-
-# @router.get("/session/{session_id}/conflits")
-# def get_session_conflits(
-#     session_id: int,
-#     db: Session = Depends(get_db),
-# ):
-#     """
-#     GET /surveillances/session/{session_id}/conflits
-#     Retourne la liste des planifications en conflit non résolues pour une session.
-#     """
-#     from app.models.planification_examen import PlanificationExamen
-#     from app.models.surveillance import Surveillance
-#     from app.models.salle_session import Creneau
-
-#     planifications = db.query(PlanificationExamen).filter(
-#         PlanificationExamen.session_id == session_id,
-#         PlanificationExamen.statut_planif == "VALIDEE",
-#     ).all()
-
-#     conflits = []
-#     for planif in planifications:
-#         nb_affectees = db.query(Surveillance).filter(
-#             Surveillance.planification_id == planif.id,
-#             Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
-#         ).count()
-
-#         if nb_affectees < planif.nb_surveillants_requis:
-#             creneau = db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
-            
-#             conflits.append({
-#                 "planification_id": planif.id,
-#                 "type_epreuve": planif.type_epreuve,
-#                 "creneau": {
-#                     "date": creneau.date.isoformat() if creneau else None,
-#                     "heure_debut": str(creneau.heure_debut) if creneau else None,
-#                     "heure_fin": str(creneau.heure_fin) if creneau else None,
-#                 },
-#                 "surveillants_requis": planif.nb_surveillants_requis,
-#                 "surveillants_trouves": nb_affectees,
-#                 "manquants": planif.nb_surveillants_requis - nb_affectees,
-#                 "statut_resolution": "NON_RESOLU",
-#             })
-
-#     return {
-#         "session_id": session_id,
-#         "total_conflits": len(conflits),
-#         "conflits": conflits,
-#     }
-
-
-# # ============================================================================
-# # HELPER ENDPOINTS
-# # ============================================================================
-
-
-# @router.get("/enseignant/{enseignant_id}/disponibilites")
-# def get_enseignant_disponibilites(
-#     enseignant_id: int,
-#     date_debut: str,
-#     date_fin: str,
-#     db: Session = Depends(get_db),
-# ):
-#     """GET /surveillances/enseignant/{enseignant_id}/disponibilites"""
-#     from app.models.disponibilite import DisponibiliteEnseignant
-#     from datetime import datetime as dt
-
-#     try:
-#         start_date = dt.strptime(date_debut, "%Y-%m-%d").date()
-#         end_date = dt.strptime(date_fin, "%Y-%m-%d").date()
-#     except ValueError:
-#         raise HTTPException(status_code=400, detail="Format de date invalide (YYYY-MM-DD)")
-
-#     disponibilites = db.query(DisponibiliteEnseignant).filter(
-#         DisponibiliteEnseignant.enseignant_id == enseignant_id,
-#         DisponibiliteEnseignant.date >= start_date,
-#         DisponibiliteEnseignant.date <= end_date,
-#     ).all()
-
-#     return {
-#         "enseignant_id": enseignant_id,
-#         "date_debut": date_debut,
-#         "date_fin": date_fin,
-#         "disponibilites": [
-#             {
-#                 "date": d.date.isoformat(),
-#                 "heure_debut": str(d.heure_debut),
-#                 "heure_fin": str(d.heure_fin),
-#                 "type": d.type_dispo,
-#                 "motif": d.motif,
-#             }
-#             for d in disponibilites
-#         ],
-#     }
-
-"""Surveillance endpoints - API routes for surveillance management."""
+"""
+routers/surveillances.py
+Surveillance endpoints — version enrichie.
+
+Tous les endpoints retournent les informations complètes via les relations
+bidirectionnelles SQLAlchemy (pas uniquement des IDs).
+
+Endpoints existants conservés et enrichis :
+  POST   /surveillances/affecter-session
+  POST   /surveillances/manual-assignment
+  POST   /surveillances/manual-assignment-batch 
+  GET    /surveillances/enseignant/{id}/toutes-surveillances 
+  ? GET    /surveillances/{session_id}    != /surveillances/getallsurveillants                   
+  GET    /surveillances/{surveillance_id}/full-details
+  GET    /surveillances/getallsurveillants  
+   GET    /surveillances/enseignants-disponibles/{planif_id}
+  PATCH  /surveillances/edit/{surveillance_id}  
+  POST   /surveillances/{surveillance_id}/reassign   
+  DELETE /surveillances/{surveillance_id}  
+  DELETE /surveillances/session/{session_id}/reset   
+  GET    /surveillances/session/{session_id}/rapport  
+  GET    /surveillances/session/{session_id}/conflits  
+  GET    /surveillances/statistiques   
+  GET    /surveillances/enseignant/{id}/disponibilites 
+"""
 
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
-from sqlalchemy.orm import Session
 import csv
 from io import StringIO
 from datetime import datetime
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
+from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.surv_service import SurvService
@@ -1300,6 +43,17 @@ from app.schemas.surveillance_schema import (
     AffecterSessionRequest,
     AffecterSessionResponse,
     AffecterSessionResult,
+    GroupeResultOut,
+    EnseignantAffecteOut,
+    DepartementOut,
+    NiveauOut,
+    SectionOut,
+    GroupeOut,
+    SalleOut,
+    MatiereOut,
+    CreneauOut,
+    SessionOut,
+    RaisonExclusionOut,
     GetAllSurveillantsResponse,
     GetAllSurveillantsItem,
     GetDisponibilitesResponse,
@@ -1310,10 +64,171 @@ from app.schemas.surveillance_schema import (
 router = APIRouter(prefix="/surveillances", tags=["Surveillance"])
 
 
-# ============================================================================
-# AUTOMATIC AFFECTATION ENDPOINTS
-# ============================================================================
+def _build_result(r, db: Session, session_orm) -> AffecterSessionResult:
+    """
+    Transforme un PlanificationAffectationResult (algo) en AffecterSessionResult
+    avec TOUS les sous-objets enrichis depuis la base.
+    """
+    from app.models.planification import Planification
+    from app.models.surveillance import Surveillance as SurveillanceModel
 
+    planif = db.query(Planification).filter(
+        Planification.id == r.planification_id
+    ).first()
+
+    sm  = planif.section_matiere if planif else None
+    mat = sm.matiere             if sm     else None
+    sec = sm.section             if sm     else None
+    niv = sec.niveau             if sec    else None
+    dep = niv.departement        if niv    else None
+    cren = planif.creneau        if planif else None
+    dept_exam = planif.departement if planif else None
+    sess = planif.session        if planif else None
+
+    matiere_out = MatiereOut(
+        id=mat.id, code=mat.code, intitule=mat.intitule,
+        coefficient=float(mat.coefficient) if mat and mat.coefficient else None,
+        credit=mat.credit,
+        duree_examen=mat.duree_examen, duree_ds=mat.duree_ds,
+    ) if mat else None
+
+    niveau_out = NiveauOut(
+        id=niv.id, libelle=niv.libelle, type_formation=niv.type_formation,
+    ) if niv else None
+
+    section_out = SectionOut(
+        id=sec.id, nom=sec.nom, niveau=niveau_out,
+    ) if sec else None
+
+    dept_exam_out = DepartementOut(
+        id=dept_exam.id, nom=dept_exam.nom, code=dept_exam.code,
+    ) if dept_exam else None
+
+    creneau_out = CreneauOut(
+        id=cren.id,
+        date=str(cren.date),
+        heure_debut=str(cren.heure_debut),
+        heure_fin=str(cren.heure_fin),
+        libelle=cren.libelle,
+    ) if cren else None
+
+    session_out = SessionOut(
+        id=sess.id,
+        type_session=sess.type_session,
+        annee_universitaire=sess.annee_universitaire,
+        date_debut=str(sess.date_debut),
+        date_fin=str(sess.date_fin),
+        statut=sess.statut,
+    ) if sess else None
+
+    groupes_out = []
+    for g in r.groupes:
+        from app.models.departement_niveau_section import Groupe
+        grp_orm   = db.query(Groupe).filter(Groupe.id == g.groupe_id).first()  if g.groupe_id else None
+        from app.models.salle_session import Salle
+        salle_orm = db.query(Salle).filter(Salle.id == g.salle_id).first()     if g.salle_id  else None
+
+        groupe_out = GroupeOut(
+            id=grp_orm.id, numero=grp_orm.numero,
+            effectif=grp_orm.effectif, nb_etudiants=grp_orm.nb_etudiants,
+            annee=grp_orm.annee,
+        ) if grp_orm else None
+
+        salle_out = SalleOut(
+            id=salle_orm.id, code=salle_orm.code,
+            designation=salle_orm.designation,
+            capacite=salle_orm.capacite, batiment=salle_orm.batiment,
+        ) if salle_orm else None
+
+        surveillants_out = []
+        for surv_obj in g.surveillants_affectes:
+            surv_db = db.query(SurveillanceModel).filter(
+                SurveillanceModel.id == surv_obj.id
+            ).first()
+            if not surv_db:
+                continue
+
+            ens      = surv_db.enseignant
+            dept_ens = ens.departement if ens else None
+            grp_surv  = surv_db.groupe
+            salle_surv = surv_db.salle
+
+            surveillants_out.append(EnseignantAffecteOut(
+                surveillance_id=surv_db.id,
+                enseignant_id=ens.id          if ens else surv_db.enseignant_id,
+                nom=ens.nom                   if ens else "",
+                prenom=ens.prenom             if ens else "",
+                grade=ens.grade               if ens else None,
+                email=ens.email               if ens else None,
+                telephone=ens.telephone       if ens else None,
+                departement=DepartementOut(
+                    id=dept_ens.id,
+                    nom=dept_ens.nom,
+                    code=dept_ens.code,
+                ) if dept_ens else None,
+                groupe=GroupeOut(
+                    id=grp_surv.id,
+                    numero=grp_surv.numero,
+                    effectif=grp_surv.effectif,
+                    nb_etudiants=grp_surv.nb_etudiants,
+                    annee=grp_surv.annee,
+                ) if grp_surv else None,
+                salle=SalleOut(
+                    id=salle_surv.id,
+                    code=salle_surv.code,
+                    designation=salle_surv.designation,
+                    capacite=salle_surv.capacite,
+                    batiment=salle_surv.batiment,
+                ) if salle_surv else None,
+                charge=float(surv_db.charge),
+                mode_affectation=surv_db.mode_affectation,
+                statut_surveillance=surv_db.statut_surveillance,
+                presence=surv_db.presence,
+                est_externe=surv_db.est_externe,
+                motif_externe=surv_db.motif_externe,
+            ))
+
+        groupes_out.append(GroupeResultOut(
+            groupe=groupe_out,
+            salle=salle_out,
+            statut=g.statut,
+            surveillants_affectes=surveillants_out,
+            surveillants_requis=g.surveillants_requis,
+            manquants=g.manquants,
+        ))
+
+    return AffecterSessionResult(
+        planification_id=r.planification_id,
+        type_epreuve=planif.type_epreuve       if planif else "",
+        semestre=planif.semestre               if planif else None,
+        duree=planif.duree                     if planif else None,
+        statut_planif=planif.statut            if planif else "",
+        nb_surveillants_requis=planif.nb_surveillants_requis if planif else 0,
+        matiere=matiere_out,
+        section=section_out,
+        departement_examen=dept_exam_out,
+        creneau=creneau_out,
+        session=session_out,
+        statut=r.statut,
+        surveillants_requis=r.surveillants_requis,
+        surveillants_affectes=len(r.surveillants_affectes),
+        manquants=r.manquants,
+        groupes=groupes_out,
+        raisons_exclusion=[
+            RaisonExclusionOut(
+                enseignant_id=v.enseignant_id,
+                nom=v.nom, prenom=v.prenom,
+                raison=v.raison.value,
+                details=v.details,
+            )
+            for v in r.violations
+        ],
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AFFECTATION AUTOMATIQUE
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/affecter-session", response_model=AffecterSessionResponse)
 def affecter_session_automatique(
@@ -1321,55 +236,90 @@ def affecter_session_automatique(
     db: Session = Depends(get_db),
 ):
     """
-    POST /surveillances/affecter-session
-    Lancer l'affectation automatique pour toutes les planifications VALIDEE.
+    Lance l'algorithme d'affectation automatique des surveillants pour une session.
+
+    BODY (JSON) :
+      - session_id   (int, obligatoire) : ID de la session d'examens
+      - section_nom  (str, optionnel)   : Filtrer par nom de section ex: "IGL3"
+      - periode      (str, optionnel)   : Filtrer par période ex: "2025/2026-S1"
+      - type_epreuve (str, optionnel)   : Filtrer par type ex: "EXAMEN_FINAL" ou "DS"
+
+    RÉPONSE :
+      - session                   : infos complètes de la session
+      - total_planifications      : nombre total de planifications traitées
+      - affectees_automatiquement : nombre de planifications entièrement affectées
+      - en_conflit                : nombre de planifications avec manque de surveillants
+      - message                   : message récapitulatif de l'algorithme
+      - resultats                 : liste des planifications affectées (même partiellement)
+          • matiere, section, departement_examen, creneau, session
+          • groupes : liste des groupes avec leurs surveillants affectés
+              - enseignant (nom, prénom, grade, email, département)
+              - groupe, salle, charge, mode, statut, présence, est_externe
+          • raisons_exclusion : pourquoi certains enseignants ont été écartés
+      - non_affectees             : planifications sans aucun surveillant (0 affecté)
+
+    CONTRAINTES appliquées par l'algorithme :
+      C1 - Volume horaire restant suffisant
+      C2 - Disponibilité déclarée (pas d'indisponibilité sur le créneau)
+      C3 - Pas de conflit de matière (enseignant ne surveille pas sa propre matière)
+      C4 - Non-simultanéité (pas déjà affecté au même créneau)
+      C5 - Appartenance au département de l'examen (priorité internes)
+      C6 - Équité de charge (prioriser ceux avec le plus de volume restant)
     """
-    session_id = payload.session_id
+    from app.models.salle_session import Session as SessionModel
+
     service = SurvService(db)
-
     try:
-        results, message = service.affecter_session_automatique(session_id)
-
-        affectees = sum(1 for r in results if r.statut == "AFFECTEE")
-        conflits = sum(1 for r in results if r.statut == "CONFLIT")
-
-        resultats = []
-        for r in results:
-            resultats.append(
-                AffecterSessionResult(
-                    planification_id=r.planification_id,
-                    statut=r.statut,
-                    surveillants_requis=r.surveillants_requis,
-                    surveillants_affectes=len(r.surveillants_affectes),
-                    manquants=r.manquants,
-                    raisons_exclusion=[
-                        {
-                            "enseignant_id": v.enseignant_id,
-                            "nom": v.nom,
-                            "prenom": v.prenom,
-                            "raison": v.raison.value,
-                        }
-                        for v in r.violations
-                    ] if r.violations else [],
-                )
-            )
-
-        return AffecterSessionResponse(
-            session_id=session_id,
-            total_planifications=len(results),
-            affectees_automatiquement=affectees,
-            en_conflit=conflits,
-            message=message,
-            resultats=resultats,
+        results, message = service.affecter_session_automatique(
+            session_id=payload.session_id,
+            section_nom=payload.section_nom,
+            periode=payload.periode,
+            type_epreuve=payload.type_epreuve,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    session_orm = db.query(SessionModel).filter(
+        SessionModel.id == payload.session_id
+    ).first()
 
-# ============================================================================
-# MANUAL AFFECTATION ENDPOINTS
-# ============================================================================
+    session_out = SessionOut(
+        id=session_orm.id,
+        type_session=session_orm.type_session,
+        annee_universitaire=session_orm.annee_universitaire,
+        date_debut=str(session_orm.date_debut),
+        date_fin=str(session_orm.date_fin),
+        statut=session_orm.statut,
+    ) if session_orm else None
 
+    resultats     = []
+    non_affectees = []
+
+    for r in results:
+        result_out = _build_result(r, db, session_orm)
+        if r.statut == "CONFLIT" and len(r.surveillants_affectes) == 0:
+            non_affectees.append(result_out)
+        else:
+            resultats.append(result_out)
+
+    affectees = sum(1 for r in results if r.statut == "AFFECTEE")
+    conflits  = sum(1 for r in results if r.statut in ("CONFLIT", "CONFLIT_PARTIEL"))
+
+    return AffecterSessionResponse(
+        session_id=payload.session_id,
+        session=session_out,
+        total_planifications=len(results),
+        affectees_automatiquement=affectees,
+        en_conflit=conflits,
+        message=message,
+        resultats=resultats,
+        non_affectees=non_affectees,
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AFFECTATION MANUELLE — planif unique
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/manual-assignment")
 def manual_assignment_single(
@@ -1377,23 +327,48 @@ def manual_assignment_single(
     db: Session = Depends(get_db),
 ):
     """
-    POST /surveillances/manual-assignment
-    Affectation manuelle d'une planification en conflit.
+    Affecte manuellement un ou plusieurs enseignants à une planification précise.
+
+    BODY (JSON) :
+      - session_id       (int)       : ID de la session
+      - planification_id (int)       : ID de la planification cible
+      - groupe_id        (int)       : ID du groupe concerné
+      - salle_id         (int)       : ID de la salle concernée
+      - enseignant_ids   (list[int]) : liste des IDs des enseignants à affecter
+      - motifs_externes  (dict)      : optionnel — {enseignant_id: "motif"} pour les externes
+
+    RÉPONSE :
+      - planification_id      : ID de la planification
+      - statut                : "CONFLIT_RESOLU" si complet, "INCOMPLET" sinon
+      - surveillants_requis   : nombre de surveillants attendus
+      - surveillants_inseres  : nombre effectivement insérés
+      - manquants             : différence (0 si complet)
+      - surveillances         : détail complet de chaque surveillance créée
+          • enseignant (nom, grade, département, volume horaire)
+          • planification, session, créneau, matière, section
+          • groupe, salle, charge, mode, statut
+
+    CONTRAINTE appliquée :
+      - C4 uniquement : non-simultanéité — si l'enseignant est déjà affecté
+        au même créneau, il est rejeté avec raison "DEJA_AFFECTE"
+      - Si un rejet survient, TOUTES les affectations de la requête sont annulées (rollback)
+
+    ERREURS :
+      - 409 : validation échouée (enseignant déjà affecté en simultané)
+      - 400 : erreur inattendue
     """
     service = SurvService(db)
-
     try:
-        result = service.affecter_planification_manuellement(request)
-        return {
-            "planification_id": result["planification_id"],
-            "statut": result["statut"],
-            "surveillants_inseres": result["surveillants_inseres"],
-        }
+        return service.affecter_planification_manuellement(request)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# AFFECTATION MANUELLE — batch session
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/manual-assignment-batch")
 def manual_assignment_batch(
@@ -1401,248 +376,441 @@ def manual_assignment_batch(
     db: Session = Depends(get_db),
 ):
     """
-    POST /surveillances/manual-assignment-batch
-    Affectation manuelle totale d'une session.
+    Affecte manuellement des enseignants à plusieurs planifications en une seule requête.
+
+    BODY (JSON) :
+      - session_id      (int)  : ID de la session
+      - affectations    (list) : liste d'objets contenant :
+          • planification_id (int)       : ID de la planification
+          • groupe_id        (int)       : ID du groupe
+          • salle_id         (int)       : ID de la salle
+          • enseignant_ids   (list[int]) : IDs des enseignants à affecter
+      - motifs_externes (dict) : optionnel — {enseignant_id: "motif"} pour les externes
+
+    RÉPONSE (succès) :
+      - session_id                   : ID de la session
+      - statut                       : "SUCCES"
+      - total_surveillances_inserees : nombre total de surveillances créées
+      - surveillances                : détail complet de chaque surveillance créée
+
+    RÉPONSE (avertissement) :
+      - statut                        : "AVERTISSEMENT"
+      - message                       : explication
+      - planifications_non_affectees  : liste des planif_ids incomplètes
+
+    CONTRAINTE appliquée :
+      - C4 uniquement : non-simultanéité par enseignant
+      - Si incomplet (moins d'enseignants que requis), retourne AVERTISSEMENT sans insérer
+
+    ERREURS :
+      - 409 : conflit de simultanéité détecté
+      - 400 : erreur inattendue
     """
     service = SurvService(db)
-
     try:
-        result = service.affecter_session_manuellement(request)
-        return {
-            "session_id": result["session_id"],
-            "statut": result["statut"],
-            "total_surveillances_inserees": result["total_surveillances_inserees"],
-            "planifications_non_affectees": result.get("planifications_non_affectees", []),
-            "message": result.get("message", ""),
-        }
+        return service.affecter_session_manuellement(request)
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# ============================================================================
-# CONSULTATION ENDPOINTS
-# ============================================================================
+# ══════════════════════════════════════════════════════════════════════════════
+# PROFIL COMPLET D'UN ENSEIGNANT
+# ══════════════════════════════════════════════════════════════════════════════
 
-
-@router.get("/{session_id}")
-def get_session_surveillances(
-    session_id: int,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
+@router.get("/enseignant/{enseignant_id}/toutes-surveillances")
+def get_all_surveillances_enseignant(
+    enseignant_id:       int,
+    annee_universitaire: Optional[str] = Query(None, description="Ex: 2025/2026"),
+    semestre:            Optional[int] = Query(None, description="1 ou 2"),
+    type_epreuve:        Optional[str] = Query(None, description="DS ou EXAMEN_FINAL"),
     db: Session = Depends(get_db),
 ):
     """
-    GET /surveillances/{session_id}
-    Récupérer toutes les surveillances d'une session.
+    Retourne le profil complet d'un enseignant avec toutes ses surveillances.
+
+    PATH :
+      - enseignant_id (int) : ID de l'enseignant
+
+    QUERY PARAMS (tous optionnels) :
+      - annee_universitaire : filtrer par année ex: "2025/2026"
+      - semestre            : filtrer par semestre (1 ou 2)
+      - type_epreuve        : filtrer par type ("DS" ou "EXAMEN_FINAL")
+
+    RÉPONSE :
+      - enseignant :
+          • id, nom, prenom, nom_complet, grade, email, téléphone
+          • departement (id, nom, code)
+      - charge_horaire :
+          • annee_universitaire
+          • volume_horaire   : heures allouées
+          • volume_consomme  : heures déjà utilisées en surveillance
+          • volume_restant   : heures encore disponibles
+          • taux_utilisation : pourcentage consommé
+      - statistiques :
+          • total_surveillances, charge_totale
+          • nb_confirmees, nb_presences, nb_externes
+          • taux_utilisation
+      - surveillances : liste détaillée de chaque surveillance avec :
+          • session, planification, créneau, matière, section, niveau
+          • groupe, salle, département examen
+          • statut, mode, charge, présence, est_externe
+
+    ERREURS :
+      - 404 : enseignant non trouvé
     """
-    service = SurvService(db)
-    surveillances = service.get_all_surveillances(
-        session_id=session_id,
-        skip=skip,
-        limit=limit,
+    from app.crud.crud_surv import get_surveillances_enrichies_for_enseignant
+    data = get_surveillances_enrichies_for_enseignant(
+        db, enseignant_id, annee_universitaire,
+        semestre=semestre,
+        type_epreuve=type_epreuve,
     )
+    if not data:
+        raise HTTPException(status_code=404, detail=f"Enseignant {enseignant_id} non trouvé")
+    return data
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LISTE DES SURVEILLANCES D'UNE SESSION
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/{session_id}")
+def get_session_surveillances(
+    session_id:     int,
+    departement_id: Optional[int] = Query(None),
+    groupe_id:      Optional[int] = Query(None),
+    salle_id:       Optional[int] = Query(None),
+    type_epreuve:   Optional[str] = Query(None),
+    statut:         Optional[str] = Query(None),
+    section_id:     Optional[int] = Query(None),
+    enseignant_id:  Optional[int] = Query(None),
+    semestre:       Optional[int] = Query(None),
+    skip:  int = Query(0,  ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+):
+    """
+    Retourne la liste paginée et filtrée de toutes les surveillances d'une session.
+
+    PATH :
+      - session_id (int) : ID de la session
+
+    QUERY PARAMS (tous optionnels sauf session_id) :
+      - departement_id : filtrer par département de l'examen
+      - groupe_id      : filtrer par groupe
+      - salle_id       : filtrer par salle
+      - type_epreuve   : "DS" ou "EXAMEN_FINAL"
+      - statut         : "AFFECTE" ou "CONFIRME"
+      - section_id     : filtrer par section
+      - enseignant_id  : filtrer par enseignant
+      - semestre       : 1 ou 2
+      - skip           : pagination — offset (défaut 0)
+      - limit          : pagination — taille de page (défaut 50, max 200)
+
+    RÉPONSE :
+      - session : infos de la session (id, type, annee, dates, statut)
+      - total   : nombre total de résultats (avant pagination)
+      - skip    : offset appliqué
+      - limit   : limite appliquée
+      - data    : liste de surveillances enrichies, chacune contenant :
+          • surveillance (id, statut, mode, charge, présence, est_externe)
+          • enseignant (nom, grade, département, volume horaire)
+          • planification (type, semestre, durée, nb_requis)
+          • session, créneau, matière, section, niveau
+          • groupe, salle, département examen
+
+    ERREURS :
+      - 404 : session non trouvée
+    """
+    from app.models.surveillance import Surveillance
+    from app.models.planification import Planification
+    from app.models.salle_session import Session as SessionModel, Creneau
+    from app.crud.crud_surv import _enrich_surveillance
+    from app.models.matiere import SectionMatiere
+
+    session_obj = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session_obj:
+        raise HTTPException(status_code=404, detail=f"Session {session_id} non trouvée")
+
+    q = (
+        db.query(Surveillance)
+        .select_from(Surveillance)
+        .join(Planification, Surveillance.planification_id == Planification.id)
+        .join(Creneau, Planification.creneau_id == Creneau.id)
+        .filter(Planification.session_id == session_id)
+    )
+    if departement_id: q = q.filter(Planification.departement_id == departement_id)
+    if type_epreuve:   q = q.filter(Planification.type_epreuve == type_epreuve)
+    if statut:         q = q.filter(Surveillance.statut_surveillance == statut)
+    if groupe_id:      q = q.filter(Surveillance.groupe_id == groupe_id)
+    if salle_id:       q = q.filter(Surveillance.salle_id == salle_id)
+    if semestre:       q = q.filter(Planification.semestre == semestre)
+    if section_id:
+        q = (
+            q.join(SectionMatiere, Planification.section_matiere_id == SectionMatiere.id)
+            .filter(SectionMatiere.section_id == section_id)
+        )
+    if enseignant_id: q = q.filter(Surveillance.enseignant_id == enseignant_id)
+    q = q.order_by(Creneau.date.asc(), Creneau.heure_debut.asc())
+
+    total = q.count()
+    survs = q.offset(skip).limit(limit).all()
+    data  = [_enrich_surveillance(db, s, session_obj.annee_universitaire) for s in survs]
 
     return {
-        "total": len(surveillances),
-        "data": [
-            {
-                "id": s.id,
-                "planification_id": s.planification_id,
-                "enseignant_id": s.enseignant_id,
-                "charge": float(s.charge),
-                "est_externe": s.est_externe,
-                "motif_externe": s.motif_externe,
-                "mode_affectation": s.mode_affectation,
-                "statut_surveillance": s.statut_surveillance,
-            }
-            for s in surveillances
-        ],
+        "session": {
+            "id": session_obj.id, "type_session": session_obj.type_session,
+            "annee_universitaire": session_obj.annee_universitaire,
+            "date_debut": str(session_obj.date_debut),
+            "date_fin":   str(session_obj.date_fin),
+            "statut":     session_obj.statut,
+        },
+        "total": total, "skip": skip, "limit": limit, "data": data,
     }
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# DÉTAIL D'UNE SURVEILLANCE
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/{surveillance_id}/full-details")
+def get_surveillance_detail(surveillance_id: int, db: Session = Depends(get_db)):
+    """
+    Retourne le détail complet d'une surveillance par son ID.
+
+    PATH :
+      - surveillance_id (int) : ID de la surveillance
+
+    RÉPONSE :
+      - surveillance : id, statut, mode, charge, présence, est_externe,
+                       motif_externe, created_at, updated_at
+      - enseignant   : nom, prénom, grade, email, téléphone, département,
+                       volume_horaire, volume_consomme, volume_restant
+      - planification : id, type_epreuve, semestre, durée, statut, nb_requis
+      - session      : id, type, annee, dates, statut
+      - creneau      : id, date, heure_debut, heure_fin, libelle
+      - matiere      : id, code, intitule, coefficient, credit, durées
+      - section      : id, nom, nb_etudiants, niveau (libelle, type_formation)
+      - niveau       : id, libelle, type_formation
+      - groupe       : id, numero, effectif, nb_etudiants, annee
+      - salle        : id, code, designation, capacite, batiment
+      - departement_examen : id, nom, code
+
+    ERREURS :
+      - 404 : surveillance non trouvée
+    """
+    from app.crud.crud_surv import get_surveillance, _enrich_surveillance
+    s = get_surveillance(db, surveillance_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Surveillance non trouvée")
+    return _enrich_surveillance(db, s)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# LISTE TOUS LES ENSEIGNANTS AVEC VOLUME
+# ══════════════════════════════════════════════════════════════════════════════
+
 @router.get("/getallsurveillants", response_model=GetAllSurveillantsResponse)
 def get_all_surveillants(
-    session_id: int = Query(..., description="ID de la session"),
-    page: int = Query(1, ge=1),
+    session_id: int = Query(...),
+    page:  int = Query(1,  ge=1),
     limit: int = Query(20, ge=1, le=100),
-    sort: str = Query("volume_restant"),
+    sort:  str = Query("volume_restant"),
     order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
 ):
     """
-    GET /surveillances/getallsurveillants
-    Récupérer tous les enseignants disponibles pour affectation.
+    Retourne la liste de TOUS les enseignants avec leur volume horaire
+    de surveillance pour une session donnée.
+
+    QUERY PARAMS :
+      - session_id (int, obligatoire) : ID de la session — sert à déduire
+                                        l'année universitaire pour le calcul des volumes
+      - page       (int, défaut 1)    : numéro de page
+      - limit      (int, défaut 20)   : taille de page (max 100)
+      - sort       (str, défaut "volume_restant") : champ de tri parmi :
+                                        "volume_restant", "volume_consomme",
+                                        "volume_horaire", "nb_surveillances"
+      - order      (str, défaut "desc") : "asc" ou "desc"
+
+    RÉPONSE :
+      - data : liste paginée d'enseignants, chacun avec :
+          • enseignant_id, nom, prenom, grade
+          • departement (id, nom, code)
+          • volume_horaire   : heures allouées pour l'année
+          • volume_consomme  : heures déjà utilisées en surveillance
+          • volume_restant   : heures encore disponibles
+          • nb_surveillances : nombre de surveillances effectuées
+      - pagination :
+          • page, limit, total, pages
+
+    ERREURS :
+      - 404 : session non trouvée
     """
     from app.models.salle_session import Session as SessionModel
-    
+    from app.models.enseignant import Enseignant
+
     session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session non trouvée")
 
-    service = SurvService(db)
-
-    from app.models.enseignant import Enseignant
+    service     = SurvService(db)
     enseignants = db.query(Enseignant).all()
+    items       = []
 
-    disponibles = []
     for ens in enseignants:
-        volume_info = service.get_volume_restant_enseignant(
-            ens.id,
-            session.annee_universitaire,
-        )
+        vol  = service.get_volume_restant_enseignant(ens.id, session.annee_universitaire)
+        dept = ens.departement
+        items.append(GetAllSurveillantsItem(
+            enseignant_id=ens.id, nom=ens.nom, prenom=ens.prenom, grade=ens.grade,
+            departement={"id": dept.id if dept else None, "nom": dept.nom if dept else "Unknown", "code": dept.code if dept else "UNK"},
+            volume_horaire=vol["volume_horaire"], volume_consomme=vol["volume_consomme"],
+            volume_restant=vol["volume_restant"], nb_surveillances=vol["nb_surveillances"],
+        ))
 
-        disponibles.append(
-            GetAllSurveillantsItem(
-                enseignant_id=ens.id,
-                nom=ens.nom,
-                prenom=ens.prenom,
-                grade=ens.grade,
-                departement={
-                    "id": ens.departement_id,
-                    "nom": ens.departement.nom if ens.departement else "Unknown",
-                    "code": ens.departement.code if ens.departement else "UNK",
-                },
-                volume_horaire=volume_info["volume_horaire"],
-                volume_consomme=volume_info["volume_consomme"],
-                volume_restant=volume_info["volume_restant"],
-                nb_surveillances=volume_info["nb_surveillances"],
-            )
-        )
-
-    reverse = order == "desc"
-    disponibles.sort(key=lambda x: getattr(x, sort, 0), reverse=reverse)
-
-    start = (page - 1) * limit
-    end = start + limit
-    paginated = disponibles[start:end]
+    items.sort(key=lambda x: getattr(x, sort, 0) or 0, reverse=(order == "desc"))
+    start     = (page - 1) * limit
+    paginated = items[start: start + limit]
 
     return GetAllSurveillantsResponse(
         data=paginated,
-        pagination={
-            "page": page,
-            "limit": limit,
-            "total": len(disponibles),
-            "pages": (len(disponibles) + limit - 1) // limit,
-        },
+        pagination={"page": page, "limit": limit, "total": len(items), "pages": (len(items) + limit - 1) // limit},
     )
 
 
-@router.get("/disponibles/{planif_id}")
-def get_enseignants_disponibles(
-    planif_id: int,
-    db: Session = Depends(get_db),
-):
+# ══════════════════════════════════════════════════════════════════════════════
+# ENSEIGNANTS DISPONIBLES POUR UNE PLANIFICATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/enseignants-disponibles/{planif_id}")
+def get_enseignants_disponibles(planif_id: int, db: Session = Depends(get_db)):
     """
-    GET /surveillances/disponibles/{planif_id}
-    Récupérer les enseignants disponibles pour une planification (résolution conflit).
-    Applique uniquement les contraintes 1 et 4.
+    Retourne la liste des enseignants éligibles pour surveiller une planification,
+    groupés par département, avec avertissements si indisponibilité déclarée le jour J.
+
+    PATH :
+      - planif_id (int) : ID de la planification cible
+
+    LOGIQUE :
+      - Contrainte stricte  → non-simultanéité (C4) : si l'enseignant est déjà
+        affecté à une autre surveillance au même créneau (même date + même heure début),
+        il est EXCLU de la liste.
+      - Contrainte souple   → indisponibilité le même JOUR (sans regarder l'heure) :
+        si l'enseignant a une entrée dans disponibilite_enseignant pour la même date
+        que la planification, il est retourné AVEC un avertissement et le détail
+        complet de son indisponibilité (type, heures, motif).
+
+    RÉPONSE :
+      - planification_id         : ID de la planification
+      - date_planification       : date du créneau de la planification
+      - total_disponibles        : nombre total d'enseignants retournés
+      - total_avec_avertissement : nombre d'enseignants avec au moins un avertissement
+      - departements             : liste groupée par département, chaque département :
+          • departement_id, departement_nom, departement_code
+          • total : nombre d'enseignants dans ce département
+          • enseignants : liste triée par volume_restant décroissant, chacun avec :
+              · enseignant_id, nom, prenom, grade, email, telephone
+              · volume_horaire, volume_consomme, volume_restant, nb_surveillances
+              · a_avertissement (bool)
+              · avertissements : liste des indisponibilités du jour avec :
+                  - date, heure_debut, heure_fin, type_dispo, motif
+
+    ERREURS :
+      - 404 : planification non trouvée
     """
     service = SurvService(db)
-    disponibles = service.get_enseignants_disponibles_pour_planification(planif_id)
-
-    return {
-        "planification_id": planif_id,
-        "total": len(disponibles),
-        "data": [
-            {
-                "enseignant_id": d.enseignant_id,
-                "nom": d.nom,
-                "prenom": d.prenom,
-                "grade": d.grade,
-                "departement": d.departement,
-                "volume_horaire": d.volume_horaire,
-                "volume_consomme": d.volume_consomme,
-                "volume_restant": d.volume_restant,
-                "nb_surveillances": d.nb_surveillances,
-            }
-            for d in disponibles
-        ],
-    }
+    result  = service.get_enseignants_disponibles_pour_planification(planif_id)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Planification {planif_id} non trouvée")
+    return result
 
 
-# ============================================================================
-# DETAIL ENDPOINTS
-# ============================================================================
+# ══════════════════════════════════════════════════════════════════════════════
+# MODIFIER UNE SURVEILLANCE
+# ══════════════════════════════════════════════════════════════════════════════
 
+@router.patch("/edit/{surveillance_id}")
+def update_surveillance_endpoint(surveillance_id: int, payload: SurveillanceUpdate, db: Session = Depends(get_db)):
+    """
+    Modifie partiellement une surveillance existante.
+    Seuls les champs fournis dans le body sont mis à jour (PATCH sémantique).
 
-@router.get("/{surveillance_id}/detail")
-def get_surveillance_detail(
-    surveillance_id: int,
-    db: Session = Depends(get_db),
-):
-    """GET /surveillances/{surveillance_id}/detail"""
+    PATH :
+      - surveillance_id (int) : ID de la surveillance à modifier
+
+    BODY (JSON, tous les champs sont optionnels) :
+      - presence            (bool)   : marquer la présence ou l'absence de l'enseignant
+      - statut_surveillance (str)    : "AFFECTE" ou "CONFIRME"
+      - charge              (float)  : nombre d'heures imputées (ex: 1.5)
+      - motif_externe       (str)    : motif si l'enseignant est externe au département
+
+    RÉPONSE :
+      Surveillance enrichie complète (même structure que /full-details) :
+      - surveillance, enseignant, planification, session, créneau,
+        matière, section, niveau, groupe, salle, département examen
+
+    NOTES :
+      - Ce endpoint remplace /confirmer/{id} : envoyer {"statut_surveillance": "CONFIRME"}
+      - Ce endpoint remplace /marquer-presence/{id} : envoyer {"presence": true/false}
+      - updated_at est automatiquement mis à jour
+
+    ERREURS :
+      - 404 : surveillance non trouvée
+    """
     service = SurvService(db)
-    surveillance = service.get_surveillance_by_id(surveillance_id)
-
-    if not surveillance:
-        raise HTTPException(status_code=404, detail="Surveillance non trouvée")
-
-    return {
-        "id": surveillance.id,
-        "planification_id": surveillance.planification_id,
-        "enseignant_id": surveillance.enseignant_id,
-        "charge": float(surveillance.charge),
-        "presence": surveillance.presence,
-        "mode_affectation": surveillance.mode_affectation,
-        "statut_surveillance": surveillance.statut_surveillance,
-        "est_externe": surveillance.est_externe,
-        "motif_externe": surveillance.motif_externe,
-        "created_at": surveillance.created_at.isoformat(),
-        "updated_at": surveillance.updated_at.isoformat(),
-    }
-
-
-# ============================================================================
-# MODIFICATION ENDPOINTS
-# ============================================================================
-
-
-@router.patch("/{surveillance_id}")
-def update_surveillance(
-    surveillance_id: int,
-    payload: SurveillanceUpdate,
-    db: Session = Depends(get_db),
-):
-    """PATCH /surveillances/{surveillance_id}"""
-    service = SurvService(db)
-
-    result = service.update_surveillance(surveillance_id, payload)
+    result  = service.update_surveillance(surveillance_id, payload)
     if not result:
         raise HTTPException(status_code=404, detail="Surveillance non trouvée")
-
-    return {
-        "id": result.id,
-        "planification_id": result.planification_id,
-        "enseignant_id": result.enseignant_id,
-        "charge": float(result.charge),
-        "statut_surveillance": result.statut_surveillance,
-        "motif_externe": result.motif_externe,
-        "updated_at": result.updated_at.isoformat(),
-    }
+    from app.crud.crud_surv import _enrich_surveillance
+    return _enrich_surveillance(db, result)
 
 
-@router.post("/{surveillance_id}/remplacer")
-def replace_surveillance(
-    surveillance_id: int,
-    request: RemplacementRequest,
-    db: Session = Depends(get_db),
-):
-    """POST /surveillances/{surveillance_id}/remplacer"""
+# ══════════════════════════════════════════════════════════════════════════════
+# REMPLACEMENT D'UN ENSEIGNANT
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/{surveillance_id}/reassign")
+def replace_surveillance_endpoint(surveillance_id: int, request: RemplacementRequest, db: Session = Depends(get_db)):
+    """
+    Remplace l'enseignant d'une surveillance par un autre.
+    L'ancienne surveillance est supprimée et une nouvelle est créée.
+
+    PATH :
+      - surveillance_id (int) : ID de la surveillance à remplacer
+
+    BODY (JSON) :
+      - nouvel_enseignant_id (int) : ID du nouvel enseignant
+      - motif               (str, optionnel) : raison du remplacement
+                            ex: "Indisponibilité médicale", "Mission officielle"
+
+    RÉPONSE :
+      - ancienne_surveillance_id : ID de la surveillance supprimée
+      - ancien_enseignant_id     : ID de l'ancien enseignant
+      - motif                    : motif fourni
+      - nouvelle_surveillance    : détail complet de la nouvelle surveillance créée
+          (même structure que /full-details)
+
+    NOTES :
+      - Le motif est préfixé "Remplacement: " dans le champ motif_externe
+      - La nouvelle surveillance hérite du groupe, salle, charge et mode
+        de l'ancienne
+      - L'opération est atomique : suppression + création dans la même transaction
+
+    ERREURS :
+      - 404 : surveillance non trouvée ou nouvel enseignant inexistant
+      - 400 : erreur inattendue
+    """
     service = SurvService(db)
-
     try:
-        old, new = service.replace_surveillance(
-            surveillance_id,
-            request.nouvel_enseignant_id,
-            request.motif,
-        )
-
+        old, new = service.replace_surveillance(surveillance_id, request.nouvel_enseignant_id, request.motif)
+        from app.crud.crud_surv import _enrich_surveillance, get_surveillance
+        new_full = get_surveillance(db, new.id)
         return {
             "ancienne_surveillance_id": old.id,
-            "nouvelle_surveillance_id": new.id,
-            "motif": request.motif,
+            "ancien_enseignant_id":     old.enseignant_id,
+            "motif":                    request.motif,
+            "nouvelle_surveillance":    _enrich_surveillance(db, new_full) if new_full else None,
         }
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -1650,367 +818,408 @@ def replace_surveillance(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# ============================================================================
-# DELETION ENDPOINTS
-# ============================================================================
-
+# ══════════════════════════════════════════════════════════════════════════════
+# SUPPRIMER UNE SURVEILLANCE
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.delete("/{surveillance_id}")
-def delete_surveillance(
-    surveillance_id: int,
-    db: Session = Depends(get_db),
-):
-    """DELETE /surveillances/{surveillance_id}"""
-    service = SurvService(db)
+def delete_surveillance_endpoint(surveillance_id: int, db: Session = Depends(get_db)):
+    """
+    Supprime une surveillance par son ID.
 
+    PATH :
+      - surveillance_id (int) : ID de la surveillance à supprimer
+
+    RÉPONSE :
+      - message : confirmation textuelle
+      - id      : ID de la surveillance supprimée
+
+    NOTES :
+      - La suppression est irréversible
+      - La charge de cet enseignant sera automatiquement recalculée
+        lors des prochains appels aux endpoints de volume
+
+    ERREURS :
+      - 404 : surveillance non trouvée
+    """
+    service = SurvService(db)
     if not service.delete_surveillance(surveillance_id):
         raise HTTPException(status_code=404, detail="Surveillance non trouvée")
+    return {"message": "Surveillance supprimée avec succès", "id": surveillance_id}
 
-    return {"message": "Surveillance supprimée avec succès"}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# RÉINITIALISER UNE SESSION
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.delete("/session/{session_id}/reset")
+def reset_session_surveillances(session_id: int, db: Session = Depends(get_db)):
+    """
+    Supprime TOUTES les surveillances d'une session entière.
+    Action destructrice et irréversible — à utiliser avant une réaffectation complète.
+
+    PATH :
+      - session_id (int) : ID de la session à réinitialiser
+
+    RÉPONSE :
+      - session_id               : ID de la session concernée
+      - surveillances_supprimees : nombre de surveillances supprimées
+      - message                  : confirmation textuelle
+
+    NOTES :
+      - Supprime en cascade toutes les surveillances liées à toutes les
+        planifications de la session
+      - Les planifications elles-mêmes ne sont PAS supprimées
+      - Après reset, la session est prête pour une nouvelle affectation automatique
+        via /affecter-session
+    """
+    from app.crud.crud_surv import delete_surveillances_for_session
+    count = delete_surveillances_for_session(db, session_id)
+    return {"session_id": session_id, "surveillances_supprimees": count, "message": f"{count} surveillance(s) supprimée(s)"}
 
 
-# ============================================================================
-# RAPPORT & EXPORT ENDPOINTS
-# ============================================================================
-
+# ══════════════════════════════════════════════════════════════════════════════
+# RAPPORT COMPLET D'UNE SESSION
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/session/{session_id}/rapport")
-def get_rapport_session(
-    session_id: int,
-    departement_id: Optional[int] = None,
-    db: Session = Depends(get_db),
-):
+def get_rapport_session(session_id: int, departement_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
     """
-    GET /surveillances/session/{session_id}/rapport
-    Générer un rapport complet d'affectation pour une session.
+    Génère un rapport complet d'une session d'examens.
+
+    PATH :
+      - session_id (int) : ID de la session
+
+    QUERY PARAMS (optionnel) :
+      - departement_id : filtrer le rapport par département
+
+    RÉPONSE :
+      - session : infos de la session (id, type, annee, dates, statut)
+      - statistiques :
+          • total_planifications : nombre de planifications VALIDEES
+          • completes            : planifications avec tous les surveillants
+          • partielles           : planifications avec certains surveillants seulement
+          • non_affectees        : planifications sans aucun surveillant
+          • total_surveillances  : total de surveillances créées
+          • total_presences      : nombre de présences confirmées
+          • total_externes       : nombre d'enseignants externes
+      - planifications : liste détaillée de chaque planification avec :
+          • matière, section, département, créneau
+          • nb_surveillants_requis, nb_surveillants_trouves, complet
+          • surveillants : liste avec enseignant, groupe, salle, charge,
+                           mode, statut, présence, est_externe
+      - en_conflit : sous-liste des planifications incomplètes avec "manquants"
+      - classement_enseignants : enseignants triés par charge décroissante avec :
+          • nom, grade, département
+          • charge_totale, nb_surveillances, nb_presences
+          • volume_horaire, taux_utilisation
+      - date_generation : horodatage de génération du rapport
+
+    ERREURS :
+      - 404 : session non trouvée
     """
-    from app.models.salle_session import Session as SessionModel
-    from app.models.planification_examen import PlanificationExamen
+    from app.models.salle_session import Session as SessionModel, Creneau
+    from app.models.planification import Planification
     from app.models.surveillance import Surveillance
-    from app.models.enseignant import Enseignant, ChargeHoraire
-    from app.models.salle_session import Creneau
-    from app.models.section_matiere import SectionMatiere
-    from app.models.matiere import Matiere
-    from app.models.departement_niveau_section import Section
+    from app.models.enseignant import ChargeHoraire
+    from datetime import datetime
 
     session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
     if not session:
         raise HTTPException(status_code=404, detail="Session non trouvée")
 
-    # Récupérer les planifications avec filtrage par département
-    query = db.query(PlanificationExamen).filter(
-        PlanificationExamen.session_id == session_id,
-        PlanificationExamen.statut_planif == "VALIDEE",
-    )
-    
+    q = db.query(Planification).filter(Planification.session_id == session_id, Planification.statut == "VALIDEE")
     if departement_id:
-        query = query.filter(PlanificationExamen.departement_id == departement_id)
-    
-    planifications = query.all()
+        q = q.filter(Planification.departement_id == departement_id)
+    planifications = q.all()
 
-    # Récupérer toutes les surveillances de la session
-    surv_query = db.query(Surveillance).join(PlanificationExamen).filter(
-        PlanificationExamen.session_id == session_id,
-        PlanificationExamen.statut_planif == "VALIDEE",
-    )
-    if departement_id:
-        surv_query = surv_query.filter(PlanificationExamen.departement_id == departement_id)
-    surveillances = surv_query.all()
+    planif_detail = []
+    en_conflit    = []
 
-    # ============================================================
-    # 1. Détail des planifications
-    # ============================================================
-    planifications_detail = []
-    planifications_en_conflit = []
-    
     for planif in planifications:
-        survs = [s for s in surveillances if s.planification_id == planif.id]
-        
-        section_matiere = db.query(SectionMatiere).filter(
-            SectionMatiere.id == planif.section_matiere_id
-        ).first()
-        matiere = db.query(Matiere).filter(Matiere.id == section_matiere.matiere_id).first() if section_matiere else None
-        creneau = db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
-        section = db.query(Section).filter(Section.id == section_matiere.section_id).first() if section_matiere else None
-        
-        planif_data = {
-            "planification_id": planif.id,
-            "matiere_code": matiere.code if matiere else "N/A",
-            "matiere_intitule": matiere.intitule if matiere else "N/A",
-            "section_nom": section.nom if section else "N/A",
-            "type_epreuve": planif.type_epreuve,
-            "duree": planif.duree,
-            "creneau": {
-                "date": creneau.date.isoformat() if creneau else None,
-                "heure_debut": str(creneau.heure_debut) if creneau else None,
-                "heure_fin": str(creneau.heure_fin) if creneau else None,
-            },
-            "nb_surveillants_requis": planif.nb_surveillants_requis,
-            "surveillants": [
-                {
-                    "enseignant_id": s.enseignant_id,
-                    "nom": s.enseignant.nom,
-                    "prenom": s.enseignant.prenom,
-                    "grade": s.enseignant.grade,
-                    "charge_imputee": float(s.charge),
-                    "mode_affectation": s.mode_affectation,
-                    "est_externe": s.est_externe,
-                    "motif_externe": s.motif_externe,
-                }
-                for s in survs
-            ],
+        survs     = planif.surveillances
+        cren      = planif.creneau
+        sm        = planif.section_matiere
+        mat       = sm.matiere  if sm  else None
+        sec       = sm.section  if sm  else None
+        dept_exam = planif.departement
+
+        surveillants_detail = []
+        for s in survs:
+            if s.statut_surveillance not in ("AFFECTE", "CONFIRME"):
+                continue
+            grp   = s.groupe
+            salle = s.salle
+            ens   = s.enseignant
+            surveillants_detail.append({
+                "surveillance_id": s.id,
+                "enseignant": {
+                    "id": ens.id if ens else None,
+                    "nom_complet": f"{ens.prenom} {ens.nom}" if ens else None,
+                    "grade": ens.grade if ens else None,
+                    "email": ens.email if ens else None,
+                    "departement": {"id": ens.departement.id if ens and ens.departement else None, "nom": ens.departement.nom if ens and ens.departement else None, "code": ens.departement.code if ens and ens.departement else None},
+                },
+                "groupe":  {"id": grp.id if grp else None, "numero": grp.numero if grp else None, "effectif": grp.effectif if grp else None},
+                "salle":   {"id": salle.id if salle else None, "code": salle.code if salle else None, "designation": salle.designation if salle else None, "batiment": salle.batiment if salle else None, "capacite": salle.capacite if salle else None},
+                "charge_imputee": float(s.charge), "mode_affectation": s.mode_affectation,
+                "statut": s.statut_surveillance, "presence": s.presence,
+                "est_externe": s.est_externe, "motif_externe": s.motif_externe,
+            })
+
+        nb_trouves = len(surveillants_detail)
+        data = {
+            "planification_id": planif.id, "type_epreuve": planif.type_epreuve, "semestre": planif.semestre, "duree": planif.duree,
+            "departement_examen": {"id": dept_exam.id if dept_exam else None, "nom": dept_exam.nom if dept_exam else None, "code": dept_exam.code if dept_exam else None},
+            "matiere": {"id": mat.id if mat else None, "code": mat.code if mat else None, "intitule": mat.intitule if mat else None},
+            "section": {"id": sec.id if sec else None, "nom": sec.nom if sec else None},
+            "creneau": {"date": cren.date.isoformat() if cren else None, "heure_debut": str(cren.heure_debut) if cren else None, "heure_fin": str(cren.heure_fin) if cren else None, "libelle": cren.libelle if cren else None},
+            "nb_surveillants_requis": planif.nb_surveillants_requis, "nb_surveillants_trouves": nb_trouves,
+            "complet": nb_trouves >= planif.nb_surveillants_requis, "surveillants": surveillants_detail,
         }
-        
-        planifications_detail.append(planif_data)
-        
-        if len(survs) < planif.nb_surveillants_requis:
-            planifications_en_conflit.append({
-                **planif_data,
-                "surveillants_trouves": len(survs),
-                "manquants": planif.nb_surveillants_requis - len(survs),
-            })
+        planif_detail.append(data)
+        if nb_trouves < planif.nb_surveillants_requis:
+            en_conflit.append({**data, "manquants": planif.nb_surveillants_requis - nb_trouves})
 
-    # ============================================================
-    # 2. Classement des enseignants par charge cumulée
-    # ============================================================
-    enseignant_charges = {}
-    for surv in surveillances:
-        ens_id = surv.enseignant_id
-        if ens_id not in enseignant_charges:
-            charge_horaire = db.query(ChargeHoraire).filter(
-                ChargeHoraire.enseignant_id == ens_id,
-                ChargeHoraire.annee_univ == session.annee_universitaire,
-            ).first()
-            enseignant_charges[ens_id] = {
-                "enseignant_id": ens_id,
-                "nom": surv.enseignant.nom,
-                "prenom": surv.enseignant.prenom,
-                "grade": surv.enseignant.grade,
-                "charge_totale": 0.0,
-                "nb_surveillances": 0,
-                "volume_horaire": charge_horaire.volume_horaire if charge_horaire else 0.0,
-            }
-        enseignant_charges[ens_id]["charge_totale"] += float(surv.charge)
-        enseignant_charges[ens_id]["nb_surveillances"] += 1
+    all_survs = db.query(Surveillance).select_from(Surveillance).join(Planification, Surveillance.planification_id == Planification.id).filter(Planification.session_id == session_id).all()
+    ens_charges: dict = {}
+    for s in all_survs:
+        eid = s.enseignant_id
+        if eid not in ens_charges:
+            ch  = db.query(ChargeHoraire).filter(ChargeHoraire.enseignant_id == eid, ChargeHoraire.annee_univ == session.annee_universitaire).first()
+            ens = s.enseignant
+            ens_charges[eid] = {"enseignant_id": eid, "nom_complet": f"{ens.prenom} {ens.nom}" if ens else "—", "grade": ens.grade if ens else "—", "departement": {"id": ens.departement.id if ens and ens.departement else None, "nom": ens.departement.nom if ens and ens.departement else None, "code": ens.departement.code if ens and ens.departement else None}, "charge_totale": 0.0, "nb_surveillances": 0, "nb_presences": 0, "volume_horaire": float(ch.volume_horaire) if ch else 0.0}
+        ens_charges[eid]["charge_totale"]    += float(s.charge)
+        ens_charges[eid]["nb_surveillances"] += 1
+        if s.presence: ens_charges[eid]["nb_presences"] += 1
 
-    classement = []
-    for data in enseignant_charges.values():
-        taux_utilisation = (data["charge_totale"] / data["volume_horaire"] * 100) if data["volume_horaire"] > 0 else 0
-        classement.append({
-            "enseignant_id": data["enseignant_id"],
-            "nom": data["nom"],
-            "prenom": data["prenom"],
-            "grade": data["grade"],
-            "charge_totale": round(data["charge_totale"], 2),
-            "nb_surveillances": data["nb_surveillances"],
-            "taux_utilisation": round(taux_utilisation, 2),
-        })
-    
-    classement.sort(key=lambda x: x["charge_totale"], reverse=True)
+    classement = sorted([{**d, "taux_utilisation": round(d["charge_totale"] / d["volume_horaire"] * 100 if d["volume_horaire"] > 0 else 0, 2)} for d in ens_charges.values()], key=lambda x: x["charge_totale"], reverse=True)
+    total_ok      = sum(1 for p in planif_detail if p["complet"])
+    total_partiel = sum(1 for p in planif_detail if 0 < p["nb_surveillants_trouves"] < p["nb_surveillants_requis"])
+    total_zero    = sum(1 for p in planif_detail if p["nb_surveillants_trouves"] == 0)
 
-    # ============================================================
-    # 3. Statistiques
-    # ============================================================
-    total_planifs = len(planifications)
-    total_completes = sum(1 for p in planifications_detail if len(p["surveillants"]) >= p["nb_surveillants_requis"])
-    total_partielles = sum(1 for p in planifications_detail if 0 < len(p["surveillants"]) < p["nb_surveillants_requis"])
-    total_non_affectees = sum(1 for p in planifications_detail if len(p["surveillants"]) == 0)
-
-    return {
-        "session": {
-            "id": session.id,
-            "type_session": session.type_session,
-            "annee_univ": session.annee_universitaire,
-            "date_debut": session.date_debut.isoformat(),
-            "date_fin": session.date_fin.isoformat(),
-            "statut": session.statut,
-        },
-        "statistiques": {
-            "total_planifications": total_planifs,
-            "completes": total_completes,
-            "partielles": total_partielles,
-            "non_affectees": total_non_affectees,
-        },
-        "planifications": planifications_detail,
-        "en_conflit": planifications_en_conflit,
-        "classement_enseignants": classement,
-        "date_generation": datetime.now().isoformat(),
-    }
+    return {"session": {"id": session.id, "type_session": session.type_session, "annee_univ": session.annee_universitaire, "date_debut": session.date_debut.isoformat(), "date_fin": session.date_fin.isoformat(), "statut": session.statut}, "statistiques": {"total_planifications": len(planifications), "completes": total_ok, "partielles": total_partiel, "non_affectees": total_zero, "total_surveillances": len(all_survs), "total_presences": sum(1 for s in all_survs if s.presence), "total_externes": sum(1 for s in all_survs if s.est_externe)}, "planifications": planif_detail, "en_conflit": en_conflit, "classement_enseignants": classement, "date_generation": datetime.now().isoformat()}
 
 
-@router.get("/session/{session_id}/export")
-def export_session(
-    session_id: int,
-    format: str = Query("csv", pattern="^(csv|xlsx)$"),
-    db: Session = Depends(get_db),
-):
-    """GET /surveillances/session/{session_id}/export"""
-    service = SurvService(db)
-    surveillances = service.get_all_surveillances(session_id=session_id, limit=10000)
-
-    if format == "csv":
-        output = StringIO()
-        writer = csv.DictWriter(
-            output,
-            fieldnames=["ID", "Planification", "Enseignant", "Charge", "Mode", "Statut", "Externe", "Motif"],
-        )
-        writer.writeheader()
-
-        for s in surveillances:
-            writer.writerow({
-                "ID": s.id,
-                "Planification": s.planification_id,
-                "Enseignant": s.enseignant_id,
-                "Charge": f"{s.charge:.2f}",
-                "Mode": s.mode_affectation,
-                "Statut": s.statut_surveillance,
-                "Externe": "Oui" if s.est_externe else "Non",
-                "Motif": s.motif_externe or "",
-            })
-
-        return StreamingResponse(
-            iter([output.getvalue()]),
-            media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=surveillances.csv"},
-        )
-    else:
-        raise HTTPException(status_code=501, detail="Format XLSX non implémenté")
-
-
-@router.get("/statistiques", response_model=StatistiquesResponse)
-def get_statistiques(
-    annee_univ: str = Query(..., description="Année universitaire"),
-    db: Session = Depends(get_db),
-):
-    """GET /surveillances/statistiques"""
-    from app.models.surveillance import Surveillance
-    from app.models.planification_examen import PlanificationExamen
-    from app.models.salle_session import Session as SessionModel
-    from sqlalchemy import func
-
-    stats = db.query(
-        func.count(Surveillance.id).label("total_surveillances"),
-        func.sum(Surveillance.charge).label("total_heures"),
-        func.count(func.distinct(Surveillance.enseignant_id)).label("unique_enseignants"),
-        func.sum(func.cast(Surveillance.est_externe, db.Integer)).label("count_externes"),
-    ).join(PlanificationExamen).join(SessionModel).filter(
-        SessionModel.annee_universitaire == annee_univ,
-    ).first()
-
-    total_requis = db.query(func.sum(PlanificationExamen.nb_surveillants_requis)).join(
-        SessionModel
-    ).filter(
-        SessionModel.annee_universitaire == annee_univ,
-        PlanificationExamen.statut_planif == "VALIDEE",
-    ).scalar() or 0
-
-    total = stats.total_surveillances or 0
-    externes = stats.count_externes or 0
-    taux_remplissage = (total / total_requis * 100) if total_requis > 0 else 0
-
-    return StatistiquesResponse(
-        annee_universitaire=annee_univ,
-        total_surveillances=total,
-        total_heures=float(stats.total_heures or 0),
-        unique_enseignants=stats.unique_enseignants or 0,
-        count_externes=externes,
-        taux_externe=(externes / total * 100) if total > 0 else 0,
-        taux_remplissage=round(taux_remplissage, 2),
-    )
-
+# ══════════════════════════════════════════════════════════════════════════════
+# CONFLITS D'UNE SESSION
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/session/{session_id}/conflits")
 def get_session_conflits(
-    session_id: int,
+    session_id:   int,
+    semestre:     Optional[int] = Query(None),
+    type_epreuve: Optional[str] = Query(None),
+    section_nom:  Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     """
-    GET /surveillances/session/{session_id}/conflits
-    Retourne la liste des planifications en conflit non résolues pour une session.
-    """
-    from app.models.planification_examen import PlanificationExamen
-    from app.models.surveillance import Surveillance
-    from app.models.salle_session import Creneau
+    Détecte et retourne les conflits de surveillance d'une session.
+    Un conflit = un groupe/salle avec moins de surveillants que requis.
 
-    planifications = db.query(PlanificationExamen).filter(
-        PlanificationExamen.session_id == session_id,
-        PlanificationExamen.statut_planif == "VALIDEE",
-    ).all()
+    PATH :
+      - session_id (int) : ID de la session
+
+    QUERY PARAMS (tous optionnels) :
+      - semestre     : filtrer par semestre (1 ou 2)
+      - type_epreuve : "DS" ou "EXAMEN_FINAL"
+      - section_nom  : filtrer par nom de section ex: "IGL3"
+
+    RÉPONSE :
+      - session_id     : ID de la session
+      - total_conflits : nombre de conflits détectés
+      - conflits       : liste de conflits, chacun contenant :
+          • planification_id, type_epreuve, semestre
+          • departement_examen (id, nom, code)
+          • matiere (id, code, intitule)
+          • section (id, nom)
+          • creneau (date, heure_debut, heure_fin, libelle)
+          • groupe (id, numero, effectif)
+          • salle (id, code, designation, batiment, capacite)
+          • surveillants_requis  : nombre attendu
+          • surveillants_trouves : nombre actuellement affecté
+          • manquants            : différence (toujours > 0 dans cette liste)
+          • statut_resolution    : toujours "NON_RESOLU" (prévu pour futur usage)
+
+    NOTES :
+      - Seules les planifications avec statut "VALIDEE" sont analysées
+      - Le comptage se fait par couple (groupe_id, salle_id) spécifique
+        pour être précis en cas de plusieurs groupes par planification
+    """
+    from app.models.planification import Planification, PlanifSalle
+    from app.models.departement_niveau_section import Section, Niveau, Groupe
+    from app.models.salle_session import Salle
+    from app.models.matiere import SectionMatiere
+
+    q = db.query(Planification).filter(
+        Planification.session_id == session_id,
+        Planification.statut     == "VALIDEE",
+    )
+    if semestre:     q = q.filter(Planification.semestre == semestre)
+    if type_epreuve: q = q.filter(Planification.type_epreuve == type_epreuve)
+    if section_nom:
+        q = (
+            q.join(SectionMatiere, Planification.section_matiere_id == SectionMatiere.id)
+             .join(Section, SectionMatiere.section_id == Section.id)
+             .filter(Section.nom == section_nom)
+        )
+    planifications = q.all()
 
     conflits = []
-    for planif in planifications:
-        nb_affectees = db.query(Surveillance).filter(
-            Surveillance.planification_id == planif.id,
-            Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
-        ).count()
 
-        if nb_affectees < planif.nb_surveillants_requis:
-            creneau = db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
-            
-            conflits.append({
-                "planification_id": planif.id,
-                "type_epreuve": planif.type_epreuve,
-                "creneau": {
-                    "date": creneau.date.isoformat() if creneau else None,
-                    "heure_debut": str(creneau.heure_debut) if creneau else None,
-                    "heure_fin": str(creneau.heure_fin) if creneau else None,
-                },
-                "surveillants_requis": planif.nb_surveillants_requis,
-                "surveillants_trouves": nb_affectees,
-                "manquants": planif.nb_surveillants_requis - nb_affectees,
-                "statut_resolution": "NON_RESOLU",
-            })
+    for planif in planifications:
+        sm        = planif.section_matiere
+        mat       = sm.matiere  if sm  else None
+        sec       = sm.section  if sm  else None
+        dept_exam = planif.departement
+        cren      = planif.creneau
+
+        planif_salles = db.query(PlanifSalle).filter(
+            PlanifSalle.planification_id == planif.id
+        ).all()
+
+        for ps in planif_salles:
+            nb = sum(
+                1 for s in planif.surveillances
+                if s.statut_surveillance in ("AFFECTE", "CONFIRME")
+                and s.groupe_id == ps.groupe_id
+                and s.salle_id  == ps.salle_id
+            )
+
+            if nb < planif.nb_surveillants_requis:
+                grp   = db.query(Groupe).filter(Groupe.id == ps.groupe_id).first() if ps.groupe_id else None
+                salle = db.query(Salle).filter(Salle.id == ps.salle_id).first()    if ps.salle_id  else None
+
+                conflits.append({
+                    "planification_id":   planif.id,
+                    "type_epreuve":       planif.type_epreuve,
+                    "semestre":           planif.semestre,
+                    "departement_examen": {
+                        "id":   dept_exam.id   if dept_exam else None,
+                        "nom":  dept_exam.nom  if dept_exam else None,
+                        "code": dept_exam.code if dept_exam else None,
+                    },
+                    "matiere": {
+                        "id":      mat.id      if mat else None,
+                        "code":    mat.code    if mat else None,
+                        "intitule": mat.intitule if mat else None,
+                    },
+                    "section": {
+                        "id":  sec.id  if sec else None,
+                        "nom": sec.nom if sec else None,
+                    },
+                    "creneau": {
+                        "date":        cren.date.isoformat()  if cren else None,
+                        "heure_debut": str(cren.heure_debut)  if cren else None,
+                        "heure_fin":   str(cren.heure_fin)    if cren else None,
+                        "libelle":     cren.libelle           if cren else None,
+                    },
+                    "groupe": {
+                        "id":      grp.id      if grp else None,
+                        "numero":  grp.numero  if grp else None,
+                        "effectif": grp.effectif if grp else None,
+                    },
+                    "salle": {
+                        "id":          salle.id          if salle else None,
+                        "code":        salle.code        if salle else None,
+                        "designation": salle.designation if salle else None,
+                        "batiment":    salle.batiment    if salle else None,
+                        "capacite":    salle.capacite    if salle else None,
+                    },
+                    "surveillants_requis":  planif.nb_surveillants_requis,
+                    "surveillants_trouves": nb,
+                    "manquants":            planif.nb_surveillants_requis - nb,
+                    "statut_resolution":    "NON_RESOLU",
+                })
 
     return {
-        "session_id": session_id,
+        "session_id":     session_id,
         "total_conflits": len(conflits),
-        "conflits": conflits,
+        "conflits":       conflits,
     }
 
 
-# ============================================================================
-# HELPER ENDPOINTS
-# ============================================================================
+# ══════════════════════════════════════════════════════════════════════════════
+# STATISTIQUES GLOBALES
+# ══════════════════════════════════════════════════════════════════════════════
 
+@router.get("/statistiques", response_model=StatistiquesResponse)
+def get_statistiques(annee_univ: str = Query(...), db: Session = Depends(get_db)):
+    """
+    Retourne les statistiques globales de surveillance pour une année universitaire.
+
+    QUERY PARAMS :
+      - annee_univ (str, obligatoire) : année universitaire ex: "2025/2026"
+
+    RÉPONSE :
+      - annee_universitaire : année concernée
+      - total_surveillances : nombre total de surveillances créées
+      - total_heures        : somme des charges (heures) imputées
+      - unique_enseignants  : nombre d'enseignants distincts impliqués
+      - count_externes      : nombre de surveillances par enseignants externes
+      - taux_externe        : pourcentage de surveillances externes
+      - taux_remplissage    : pourcentage de postes pourvus vs postes requis
+                              (total_surveillances / total_requis * 100)
+
+    NOTES :
+      - Couvre toutes les sessions de l'année universitaire spécifiée
+      - taux_remplissage = 100% signifie que toutes les planifications
+        ont le nombre exact de surveillants requis
+    """
+    from app.models.surveillance import Surveillance
+    from app.models.planification import Planification
+    from app.models.salle_session import Session as SessionModel
+    from sqlalchemy import func
+    stats = db.query(func.count(Surveillance.id).label("total_surveillances"), func.sum(Surveillance.charge).label("total_heures"), func.count(func.distinct(Surveillance.enseignant_id)).label("unique_enseignants")).select_from(Surveillance).join(Planification, Surveillance.planification_id == Planification.id).join(SessionModel, Planification.session_id == SessionModel.id).filter(SessionModel.annee_universitaire == annee_univ).first()
+    count_externes = db.query(func.count(Surveillance.id)).select_from(Surveillance).join(Planification, Surveillance.planification_id == Planification.id).join(SessionModel, Planification.session_id == SessionModel.id).filter(SessionModel.annee_universitaire == annee_univ, Surveillance.est_externe == True).scalar() or 0
+    total_requis = db.query(func.sum(Planification.nb_surveillants_requis)).select_from(Planification).join(SessionModel, Planification.session_id == SessionModel.id).filter(SessionModel.annee_universitaire == annee_univ, Planification.statut == "VALIDEE").scalar() or 0
+    total = stats.total_surveillances or 0
+    return StatistiquesResponse(annee_universitaire=annee_univ, total_surveillances=total, total_heures=float(stats.total_heures or 0), unique_enseignants=stats.unique_enseignants or 0, count_externes=count_externes, taux_externe=(count_externes / total * 100) if total > 0 else 0, taux_remplissage=round((total / total_requis * 100) if total_requis > 0 else 0, 2))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# INDISPONIBILITÉS D'UN ENSEIGNANT
+# ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/enseignant/{enseignant_id}/disponibilites", response_model=GetDisponibilitesResponse)
-def get_enseignant_disponibilites(
-    enseignant_id: int,
-    date_debut: str = Query(..., description="Date de début (YYYY-MM-DD)"),
-    date_fin: str = Query(..., description="Date de fin (YYYY-MM-DD)"),
-    db: Session = Depends(get_db),
-):
-    """GET /surveillances/enseignant/{enseignant_id}/disponibilites"""
+def get_enseignant_disponibilites(enseignant_id: int, date_debut: str = Query(...), date_fin: str = Query(...), db: Session = Depends(get_db)):
+    """
+    Retourne les indisponibilités déclarées d'un enseignant sur une période donnée.
+
+    PATH :
+      - enseignant_id (int) : ID de l'enseignant
+
+    QUERY PARAMS (obligatoires) :
+      - date_debut (str) : date de début au format "YYYY-MM-DD" ex: "2026-01-07"
+      - date_fin   (str) : date de fin   au format "YYYY-MM-DD" ex: "2026-01-15"
+
+    RÉPONSE :
+      - enseignant_id  : ID de l'enseignant
+      - date_debut     : date de début de la période
+      - date_fin       : date de fin de la période
+      - disponibilites : liste des indisponibilités déclarées, chacune avec :
+          • date        : date de l'indisponibilité
+          • heure_debut : heure de début (format "HH:MM:SS")
+          • heure_fin   : heure de fin   (format "HH:MM:SS")
+          • type        : type parmi DISPONIBLE, INDISPONIBLE, COURS_PREVU,
+                          MISSION, CONGE
+          • motif       : description libre (peut être null)
+
+    NOTES :
+      - Retourne une liste vide si aucune indisponibilité n'est déclarée
+      - Les dates sont inclusives (date_debut <= date <= date_fin)
+      - Utile pour le frontend pour afficher le calendrier d'un enseignant
+        avant de l'affecter manuellement
+
+    ERREURS :
+      - 400 : format de date invalide (doit être YYYY-MM-DD)
+    """
     from app.models.disponibilite import DisponibiliteEnseignant
     from datetime import datetime as dt
-
     try:
-        start_date = dt.strptime(date_debut, "%Y-%m-%d").date()
-        end_date = dt.strptime(date_fin, "%Y-%m-%d").date()
+        start = dt.strptime(date_debut, "%Y-%m-%d").date()
+        end   = dt.strptime(date_fin,   "%Y-%m-%d").date()
     except ValueError:
         raise HTTPException(status_code=400, detail="Format de date invalide (YYYY-MM-DD)")
-
-    disponibilites = db.query(DisponibiliteEnseignant).filter(
-        DisponibiliteEnseignant.enseignant_id == enseignant_id,
-        DisponibiliteEnseignant.date >= start_date,
-        DisponibiliteEnseignant.date <= end_date,
-    ).all()
-
-    disponibilites_list = []
-    for d in disponibilites:
-        disponibilites_list.append(
-            DisponibiliteItem(
-                date=d.date.isoformat(),
-                heure_debut=str(d.heure_debut),
-                heure_fin=str(d.heure_fin),
-                type=d.type_dispo,
-                motif=d.motif,
-            )
-        )
-
-    return GetDisponibilitesResponse(
-        enseignant_id=enseignant_id,
-        date_debut=date_debut,
-        date_fin=date_fin,
-        disponibilites=disponibilites_list,
-    )
+    dispos = db.query(DisponibiliteEnseignant).filter(DisponibiliteEnseignant.enseignant_id == enseignant_id, DisponibiliteEnseignant.date >= start, DisponibiliteEnseignant.date <= end).all()
+    return GetDisponibilitesResponse(enseignant_id=enseignant_id, date_debut=date_debut, date_fin=date_fin, disponibilites=[DisponibiliteItem(date=d.date.isoformat(), heure_debut=str(d.heure_debut), heure_fin=str(d.heure_fin), type=d.type_dispo, motif=d.motif) for d in dispos])

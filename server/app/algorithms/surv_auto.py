@@ -1,810 +1,19 @@
-# """Powerful automatic surveillance affectation algorithm."""
-
-# from datetime import datetime
-# from dataclasses import dataclass
-# from enum import Enum
-# from typing import Optional
-
-# from sqlalchemy.orm import Session
-# from sqlalchemy import func
-
-# from app.models.surveillance import Surveillance
-# from app.models.enseignant import Enseignant, ChargeHoraire, Enseignement
-# from app.models.planification_examen import PlanificationExamen
-# from app.models.disponibilite import DisponibiliteEnseignant
-# from app.models.departement_niveau_section import Departement
-# from app.models.salle_session import Session as SessionModel, Creneau
-# from app.crud.crud_surv import create_surveillance
-# from app.schemas.surveillance_schema import (
-#     SurveillanceCreate,
-#     ModeAffectation,
-#     StatutSurveillance,
-#     ReasonExclusion,
-# )
-
-
-# class ConstraintPriority(Enum):
-#     """Priority levels for constraints."""
-#     HARD = "HARD"  # Must always be respected
-#     SOFT = "SOFT"  # Can be relaxed in last resort
-#     INFO = "INFO"  # For information only
-
-
-# @dataclass
-# class EnseignantCandidat:
-#     """Candidate enseignant for surveillance."""
-#     enseignant_id: int
-#     nom: str
-#     prenom: str
-#     grade: Optional[str]
-#     departement_id: int
-#     departement_nom: str
-#     volume_horaire: float
-#     volume_restant: float
-#     volume_consomme: float
-#     nb_surveillances: int
-#     a_conflit_matiere: bool = False
-#     est_dans_departement: bool = True
-    
-#     def __lt__(self, other):
-#         """Sort by volume_restant DESC, then by nb_surveillances ASC."""
-#         if self.volume_restant != other.volume_restant:
-#             return self.volume_restant > other.volume_restant
-#         return self.nb_surveillances < other.nb_surveillances
-
-
-# @dataclass
-# class ConstraintViolation:
-#     """Record a constraint violation."""
-#     enseignant_id: int
-#     nom: str
-#     prenom: str
-#     raison: ReasonExclusion
-#     details: Optional[str] = None
-
-
-# @dataclass
-# class PlanificationAffectationResult:
-#     """Result of affectation attempt for a single planification."""
-#     planification_id: int
-#     statut: str  # "AFFECTEE" or "CONFLIT"
-#     surveillants_affectes: list[Surveillance] = None
-#     surveillants_requis: int = 0
-#     manquants: int = 0
-#     violations: list[ConstraintViolation] = None
-
-#     def __post_init__(self):
-#         if self.surveillants_affectes is None:
-#             self.surveillants_affectes = []
-#         if self.violations is None:
-#             self.violations = []
-
-
-# class AutomaticAffectationAlgorithm:
-#     """Puissant algorithme d'affectation automatique des surveillances."""
-
-#     TOLERANCE_PERCENT = 0.0005  # ±0.05% tolerance
-
-#     def __init__(self, db: Session):
-#         self.db = db
-
-#     def affecter_session(
-#         self,
-#         session_id: int,
-#     ) -> tuple[list[PlanificationAffectationResult], str]:
-#         """
-#         Main entry point: Affecter toutes les planifications VALIDEE d'une session.
-
-#         Returns:
-#             - List of results for each planification
-#             - Global status message
-#         """
-#         # Récupérer la session
-#         session = self.db.query(SessionModel).filter(SessionModel.id == session_id).first()
-#         if not session:
-#             return [], f"Session {session_id} non trouvée"
-
-#         annee_univ = session.annee_universitaire
-
-#         # Récupérer toutes les planifications VALIDEE
-#         planifications = self.db.query(Planification).filter(
-#             Planification.session_id == session_id,
-#             Planification.statut == "VALIDEE",
-#         ).order_by(
-#             Planification.date_examen.asc(),
-#             Planification.heure_debut.asc(),
-#         ).all()
-
-#         if not planifications:
-#             return [], f"Aucune planification VALIDEE trouvée dans la session {session_id}"
-
-#         results = []
-#         total_affectees = 0
-#         total_conflits = 0
-
-#         # BOUCLE: Traiter chaque planification
-#         for planif in planifications:
-#             result = self._affecter_planification(
-#                 planif,
-#                 annee_univ,
-#             )
-#             results.append(result)
-
-#             if result.statut == "AFFECTEE":
-#                 total_affectees += 1
-#             else:
-#                 total_conflits += 1
-
-#         status_msg = (
-#             f"Traitement terminé: {total_affectees} planifications affectées, "
-#             f"{total_conflits} planifications en conflit"
-#         )
-
-#         return results, status_msg
-
-#     def _affecter_planification(
-#         self,
-#         planif: PlanificationExamen,
-#         annee_univ: str,
-#     ) -> PlanificationAffectationResult:
-#         """
-#         Affecter une seule planification selon les 5 contraintes.
-
-#         Étapes:
-#         1. Calcul dynamique du volume restant
-#         2. Filtrage selon les 5 contraintes
-#         3. Tri des candidats éligibles
-#         4. Insertion des surveillances (ou enregistrement du conflit)
-#         """
-#         result = PlanificationAffectationResult(
-#             planification_id=planif.id,
-#             statut="AFFECTEE",
-#             surveillants_requis=planif.nb_surveillants_requis,
-#         )
-
-#         # Récupérer tous les enseignants du département
-#         candidats_potentiels = self._get_enseignants_departement(planif.departement_id)
-
-#         # Étape 1: Calculer le volume restant pour chaque candidat
-#         for candidat in candidats_potentiels:
-#             charge_consommee = self._get_charge_consumed(candidat.enseignant_id, annee_univ)
-#             candidat.volume_consomme = charge_consommee
-#             candidat.volume_restant = candidat.volume_horaire - charge_consommee
-
-#         # Étape 2: Filtrer selon les contraintes
-#         candidats_eligibles = []
-#         violations = []
-
-#         for candidat in candidats_potentiels:
-#             # Contrainte 1: Disponibilité temporelle (HARD - toujours appliquée)
-#             if not self._check_disponibilite_temporelle(candidat.enseignant_id, planif):
-#                 violations.append(ConstraintViolation(
-#                     enseignant_id=candidat.enseignant_id,
-#                     nom=candidat.nom,
-#                     prenom=candidat.prenom,
-#                     raison=ReasonExclusion.INDISPONIBLE,
-#                 ))
-#                 continue
-
-#             # Contrainte 4: Non-simultanéité (HARD - toujours appliquée)
-#             if self._check_conflit_simultaneite(candidat.enseignant_id, planif):
-#                 violations.append(ConstraintViolation(
-#                     enseignant_id=candidat.enseignant_id,
-#                     nom=candidat.nom,
-#                     prenom=candidat.prenom,
-#                     raison=ReasonExclusion.DEJA_AFFECTE,
-#                 ))
-#                 continue
-
-#             # Contrainte 3: Volume horaire restant (HARD - respect tolérance ±0.05%)
-#             tolerance = candidat.volume_horaire * self.TOLERANCE_PERCENT
-#             if candidat.volume_restant < -tolerance:
-#                 violations.append(ConstraintViolation(
-#                     enseignant_id=candidat.enseignant_id,
-#                     nom=candidat.nom,
-#                     prenom=candidat.prenom,
-#                     raison=ReasonExclusion.VOLUME_EPUISE,
-#                     details=f"Restant: {candidat.volume_restant:.2f}h (limite: {-tolerance:.2f}h)",
-#                 ))
-#                 continue
-
-#             # Contrainte 2: Conflit de matière (SOFT - peut être relaxée)
-#             a_conflit = self._check_conflit_matiere(candidat.enseignant_id, planif)
-#             candidat.a_conflit_matiere = a_conflit
-
-#             candidats_eligibles.append(candidat)
-
-#         # Trier les candidats éligibles
-#         candidats_eligibles.sort()
-
-#         # Étape 3: Sélectionner les surveillants
-#         surveillants_selectionnes = []
-#         candidats_sans_conflit = [c for c in candidats_eligibles if not c.a_conflit_matiere]
-
-#         # Priorité 1: Sans conflit de matière
-#         for candidat in candidats_sans_conflit[:planif.nb_surveillants_requis]:
-#             surv = self._creer_surveillance(planif, candidat)
-#             surveillants_selectionnes.append(surv)
-
-#         # Priorité 2: Avec conflit de matière (en dernier recours)
-#         if len(surveillants_selectionnes) < planif.nb_surveillants_requis:
-#             candidats_avec_conflit = [c for c in candidats_eligibles if c.a_conflit_matiere]
-#             for candidat in candidats_avec_conflit:
-#                 if len(surveillants_selectionnes) >= planif.nb_surveillants_requis:
-#                     break
-#                 surv = self._creer_surveillance(planif, candidat)
-#                 surveillants_selectionnes.append(surv)
-
-#         # Étape 4: Vérifier si complet
-#         if len(surveillants_selectionnes) < planif.nb_surveillants_requis:
-#             result.statut = "CONFLIT"
-#             result.surveillants_affectes = surveillants_selectionnes
-#             result.manquants = planif.nb_surveillants_requis - len(surveillants_selectionnes)
-#             result.violations = violations
-#         else:
-#             result.surveillants_affectes = surveillants_selectionnes
-
-#         return result
-
-#     def _get_enseignants_departement(self, departement_id: int) -> list[EnseignantCandidat]:
-#         """Récupérer tous les enseignants d'un département avec leurs infos."""
-#         enseignants = self.db.query(
-#             Enseignant.id,
-#             Enseignant.nom,
-#             Enseignant.prenom,
-#             Enseignant.grade,
-#             Enseignant.departement_id,
-#         ).filter(Enseignant.departement_id == departement_id).all()
-
-#         candidats = []
-#         for ens in enseignants:
-#             # Récupérer le volume horaire (assume current year)
-#             from datetime import datetime as dt
-#             current_year = f"{dt.now().year}/{dt.now().year + 1}"
-#             charge = self.db.query(ChargeHoraire).filter(
-#                 ChargeHoraire.enseignant_id == ens.id,
-#                 ChargeHoraire.annee_univ == current_year,
-#             ).first()
-
-#             volume_horaire = charge.volume_horaire if charge else 0.0
-#             departement = self.db.query(Departement).filter(Departement.id == departement_id).first()
-
-#             candidats.append(EnseignantCandidat(
-#                 enseignant_id=ens.id,
-#                 nom=ens.nom,
-#                 prenom=ens.prenom,
-#                 grade=ens.grade,
-#                 departement_id=ens.departement_id,
-#                 departement_nom=departement.nom if departement else "Unknown",
-#                 volume_horaire=volume_horaire,
-#                 volume_restant=volume_horaire,
-#                 volume_consomme=0.0,
-#                 nb_surveillances=0,
-#             ))
-
-#         return candidats
-
-#     def _get_charge_consumed(
-#         self,
-#         enseignant_id: int,
-#         annee_univ: str,
-#     ) -> float:
-#         """Calculer la charge totale consommée par un enseignant en une année universitaire."""
-#         result = self.db.query(func.coalesce(func.sum(Surveillance.charge), 0)).filter(
-#             Surveillance.enseignant_id == enseignant_id,
-#             Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
-#         ).join(Planification).join(SessionModel).filter(
-#             SessionModel.annee_universitaire == annee_univ,
-#         ).scalar()
-
-#         return float(result)
-
-#     def _check_disponibilite_temporelle(
-#         self,
-#         enseignant_id: int,
-#         planif: PlanificationExamen,
-#     ) -> bool:
-#         """Vérifier la disponibilité temporelle d'un enseignant (Contrainte 1 - HARD)."""
-#         from app.models.creneau import Creneau
-
-#         # Récupérer le créneau de la planification
-#         creneau = self.db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
-#         if not creneau:
-#             return False
-
-#         # Vérifier s'il y a une indisponibilité qui chevauche
-#         indisponibilites = self.db.query(DisponibiliteEnseignant).filter(
-#             DisponibiliteEnseignant.enseignant_id == enseignant_id,
-#             DisponibiliteEnseignant.date == creneau.date,
-#             DisponibiliteEnseignant.type_dispo.in_(["INDISPONIBLE", "COURS_PREVU", "MISSION", "CONGE"]),
-#         ).all()
-
-#         for indispo in indisponibilites:
-#             # Vérifier le chevauchement horaire
-#             if (indispo.heure_debut < creneau.heure_fin and
-#                 indispo.heure_fin > creneau.heure_debut):
-#                 return False
-
-#         return True
-
-#     def _check_conflit_simultaneite(
-#         self,
-#         enseignant_id: int,
-#         planif: PlanificationExamen,
-#     ) -> bool:
-#         """Vérifier la non-simultanéité (Contrainte 4 - HARD)."""
-#         from app.models.creneau import Creneau
-
-#         creneau = self.db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
-#         if not creneau:
-#             return False
-
-#         # Chercher une autre surveillance du même enseignant au même créneau
-#         conflits = self.db.query(Surveillance).join(Planification).join(Creneau).filter(
-#             Surveillance.enseignant_id == enseignant_id,
-#             Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
-#             Creneau.date == creneau.date,
-#             Creneau.heure_debut == creneau.heure_debut,
-#         ).all()
-
-#         return len(conflits) > 0
-
-#     def _check_conflit_matiere(
-#         self,
-#         enseignant_id: int,
-#         planif: PlanificationExamen,
-#     ) -> bool:
-#         """Vérifier le conflit de matière (Contrainte 2 - SOFT)."""
-#         from app.models.section_matiere import SectionMatiere
-
-#         # Récupérer la section_matiere de la planification
-#         section_matiere = self.db.query(SectionMatiere).filter(
-#             SectionMatiere.id == planif.section_matiere_id,
-#         ).first()
-
-#         if not section_matiere:
-#             return False
-
-#         # Vérifier si l'enseignant enseigne cette matière (COURS ou TD)
-#         enseignement = self.db.query(Enseignement).filter(
-#             Enseignement.enseignant_id == enseignant_id,
-#             Enseignement.matiere_id == section_matiere.matiere_id,
-#             Enseignement.type_enseignement.in_(["COURS", "TD"]),
-#         ).first()
-
-#         return enseignement is not None
-
-#     def _creer_surveillance(
-#         self,
-#         planif: Planification,
-#         candidat: EnseignantCandidat,
-#     ) -> Surveillance:
-#         """Créer une surveillance dans la base de données."""
-#         payload = SurveillanceCreate(
-#             planification_id=planif.id,
-#             enseignant_id=candidat.enseignant_id,
-#             charge=float(planif.duree / 60),  # Convertir minutes en heures
-#             mode_affectation=ModeAffectation.AUTOMATIQUE,
-#             statut_surveillance=StatutSurveillance.AFFECTE,
-#             est_externe=False,
-#             motif_externe=None,
-#         )
-
-#         return create_surveillance(self.db, payload)
-
-# """Powerful automatic surveillance affectation algorithm."""
-
-# from datetime import datetime
-# from dataclasses import dataclass
-# from enum import Enum
-# from typing import Optional
-
-# from sqlalchemy.orm import Session
-# from sqlalchemy import func
-
-# from app.models.surveillance import Surveillance
-# from app.models.enseignant import Enseignant, ChargeHoraire, Enseignement
-# from app.models.planification_examen import PlanificationExamen  # ✅ CORRIGÉ
-# from app.models.disponibilite import DisponibiliteEnseignant
-# from app.models.departement_niveau_section import Departement
-# from app.models.salle_session import Session as SessionModel, Creneau
-# from app.crud.crud_surv import create_surveillance
-# from app.schemas.surveillance_schema import (
-#     SurveillanceCreate,
-#     ModeAffectation,
-#     StatutSurveillance,
-#     ReasonExclusion,
-# )
-
-
-# class ConstraintPriority(Enum):
-#     """Priority levels for constraints."""
-#     HARD = "HARD"  # Must always be respected
-#     SOFT = "SOFT"  # Can be relaxed in last resort
-#     INFO = "INFO"  # For information only
-
-
-# @dataclass
-# class EnseignantCandidat:
-#     """Candidate enseignant for surveillance."""
-#     enseignant_id: int
-#     nom: str
-#     prenom: str
-#     grade: Optional[str]
-#     departement_id: int
-#     departement_nom: str
-#     volume_horaire: float
-#     volume_restant: float
-#     volume_consomme: float
-#     nb_surveillances: int
-#     a_conflit_matiere: bool = False
-#     est_dans_departement: bool = True
-    
-#     def __lt__(self, other):
-#         """Sort by volume_restant DESC, then by nb_surveillances ASC."""
-#         if self.volume_restant != other.volume_restant:
-#             return self.volume_restant > other.volume_restant
-#         return self.nb_surveillances < other.nb_surveillances
-
-
-# @dataclass
-# class ConstraintViolation:
-#     """Record a constraint violation."""
-#     enseignant_id: int
-#     nom: str
-#     prenom: str
-#     raison: ReasonExclusion
-#     details: Optional[str] = None
-
-
-# @dataclass
-# class PlanificationAffectationResult:
-#     """Result of affectation attempt for a single planification."""
-#     planification_id: int
-#     statut: str  # "AFFECTEE" or "CONFLIT"
-#     surveillants_affectes: list[Surveillance] = None
-#     surveillants_requis: int = 0
-#     manquants: int = 0
-#     violations: list[ConstraintViolation] = None
-
-#     def __post_init__(self):
-#         if self.surveillants_affectes is None:
-#             self.surveillants_affectes = []
-#         if self.violations is None:
-#             self.violations = []
-
-
-# class AutomaticAffectationAlgorithm:
-#     """Puissant algorithme d'affectation automatique des surveillances."""
-
-#     TOLERANCE_PERCENT = 0.0005  # ±0.05% tolerance
-
-#     def __init__(self, db: Session):
-#         self.db = db
-
-#     def affecter_session(
-#         self,
-#         session_id: int,
-#     ) -> tuple[list[PlanificationAffectationResult], str]:
-#         """
-#         Main entry point: Affecter toutes les planifications VALIDEE d'une session.
-
-#         Returns:
-#             - List of results for each planification
-#             - Global status message
-#         """
-#         # Récupérer la session
-#         session = self.db.query(SessionModel).filter(SessionModel.id == session_id).first()
-#         if not session:
-#             return [], f"Session {session_id} non trouvée"
-
-#         annee_univ = session.annee_universitaire
-
-#         # ✅ CORRIGÉ: PlanificationExamen au lieu de Planification
-#         planifications = self.db.query(PlanificationExamen).filter(
-#             PlanificationExamen.session_id == session_id,
-#             PlanificationExamen.statut == "VALIDEE",  # ✅ CORRIGÉ: statut_planif
-#         ).order_by(
-#             PlanificationExamen.date_examen.asc(),
-#             PlanificationExamen.heure_debut.asc(),
-#         ).all()
-
-#         if not planifications:
-#             return [], f"Aucune planification VALIDEE trouvée dans la session {session_id}"
-
-#         results = []
-#         total_affectees = 0
-#         total_conflits = 0
-
-#         # BOUCLE: Traiter chaque planification
-#         for planif in planifications:
-#             result = self._affecter_planification(
-#                 planif,
-#                 annee_univ,
-#             )
-#             results.append(result)
-
-#             if result.statut == "AFFECTEE":
-#                 total_affectees += 1
-#             else:
-#                 total_conflits += 1
-
-#         status_msg = (
-#             f"Traitement terminé: {total_affectees} planifications affectées, "
-#             f"{total_conflits} planifications en conflit"
-#         )
-
-#         return results, status_msg
-
-#     def _affecter_planification(
-#         self,
-#         planif: PlanificationExamen,
-#         annee_univ: str,
-#     ) -> PlanificationAffectationResult:
-#         """
-#         Affecter une seule planification selon les 5 contraintes.
-
-#         Étapes:
-#         1. Calcul dynamique du volume restant
-#         2. Filtrage selon les 5 contraintes
-#         3. Tri des candidats éligibles
-#         4. Insertion des surveillances (ou enregistrement du conflit)
-#         """
-#         result = PlanificationAffectationResult(
-#             planification_id=planif.id,
-#             statut="AFFECTEE",
-#             surveillants_requis=planif.nb_surveillants_requis,
-#         )
-
-#         # Récupérer tous les enseignants du département
-#         candidats_potentiels = self._get_enseignants_departement(planif.departement_id)
-
-#         # Étape 1: Calculer le volume restant pour chaque candidat
-#         for candidat in candidats_potentiels:
-#             charge_consommee = self._get_charge_consumed(candidat.enseignant_id, annee_univ)
-#             candidat.volume_consomme = charge_consommee
-#             candidat.volume_restant = candidat.volume_horaire - charge_consommee
-
-#         # Étape 2: Filtrer selon les contraintes
-#         candidats_eligibles = []
-#         violations = []
-
-#         for candidat in candidats_potentiels:
-#             # Contrainte 1: Disponibilité temporelle (HARD - toujours appliquée)
-#             if not self._check_disponibilite_temporelle(candidat.enseignant_id, planif):
-#                 violations.append(ConstraintViolation(
-#                     enseignant_id=candidat.enseignant_id,
-#                     nom=candidat.nom,
-#                     prenom=candidat.prenom,
-#                     raison=ReasonExclusion.INDISPONIBLE,
-#                 ))
-#                 continue
-
-#             # Contrainte 4: Non-simultanéité (HARD - toujours appliquée)
-#             if self._check_conflit_simultaneite(candidat.enseignant_id, planif):
-#                 violations.append(ConstraintViolation(
-#                     enseignant_id=candidat.enseignant_id,
-#                     nom=candidat.nom,
-#                     prenom=candidat.prenom,
-#                     raison=ReasonExclusion.DEJA_AFFECTE,
-#                 ))
-#                 continue
-
-#             # Contrainte 3: Volume horaire restant (HARD - respect tolérance ±0.05%)
-#             tolerance = candidat.volume_horaire * self.TOLERANCE_PERCENT
-#             if candidat.volume_restant < -tolerance:
-#                 violations.append(ConstraintViolation(
-#                     enseignant_id=candidat.enseignant_id,
-#                     nom=candidat.nom,
-#                     prenom=candidat.prenom,
-#                     raison=ReasonExclusion.VOLUME_EPUISE,
-#                     details=f"Restant: {candidat.volume_restant:.2f}h (limite: {-tolerance:.2f}h)",
-#                 ))
-#                 continue
-
-#             # Contrainte 2: Conflit de matière (SOFT - peut être relaxée)
-#             a_conflit = self._check_conflit_matiere(candidat.enseignant_id, planif)
-#             candidat.a_conflit_matiere = a_conflit
-
-#             candidats_eligibles.append(candidat)
-
-#         # Trier les candidats éligibles
-#         candidats_eligibles.sort()
-
-#         # Étape 3: Sélectionner les surveillants
-#         surveillants_selectionnes = []
-#         candidats_sans_conflit = [c for c in candidats_eligibles if not c.a_conflit_matiere]
-
-#         # Priorité 1: Sans conflit de matière
-#         for candidat in candidats_sans_conflit[:planif.nb_surveillants_requis]:
-#             surv = self._creer_surveillance(planif, candidat)
-#             surveillants_selectionnes.append(surv)
-
-#         # Priorité 2: Avec conflit de matière (en dernier recours)
-#         if len(surveillants_selectionnes) < planif.nb_surveillants_requis:
-#             candidats_avec_conflit = [c for c in candidats_eligibles if c.a_conflit_matiere]
-#             for candidat in candidats_avec_conflit:
-#                 if len(surveillants_selectionnes) >= planif.nb_surveillants_requis:
-#                     break
-#                 surv = self._creer_surveillance(planif, candidat)
-#                 surveillants_selectionnes.append(surv)
-
-#         # ✅ NOUVEAU: Vérifier si on a utilisé des enseignants avec conflit matière
-#         a_utilise_conflit_matiere = any(
-#             c.enseignant_id in [cand.enseignant_id for cand in candidats_avec_conflit]
-#             for c in surveillants_selectionnes
-#         ) if 'candidats_avec_conflit' in dir() else False
-
-#         # Étape 4: Vérifier si complet
-#         if len(surveillants_selectionnes) < planif.nb_surveillants_requis:
-#             result.statut = "CONFLIT"
-#             result.surveillants_affectes = surveillants_selectionnes
-#             result.manquants = planif.nb_surveillants_requis - len(surveillants_selectionnes)
-#             result.violations = violations
-#         else:
-#             result.surveillants_affectes = surveillants_selectionnes
-#             # ✅ NOUVEAU: Ajouter un avertissement si contrainte matière a été levée
-#             if a_utilise_conflit_matiere:
-#                 result.violations.append(ConstraintViolation(
-#                     enseignant_id=0,
-#                     nom="AVERTISSEMENT",
-#                     prenom="",
-#                     raison=ReasonExclusion.CONFLIT_MATIERE,
-#                     details="Contrainte matière levée en dernier recours (enseignant surveille sa propre matière)",
-#                 ))
-
-#         return result
-
-#     def _get_enseignants_departement(self, departement_id: int) -> list[EnseignantCandidat]:
-#         """Récupérer tous les enseignants d'un département avec leurs infos."""
-#         enseignants = self.db.query(
-#             Enseignant.id,
-#             Enseignant.nom,
-#             Enseignant.prenom,
-#             Enseignant.grade,
-#             Enseignant.departement_id,
-#         ).filter(Enseignant.departement_id == departement_id).all()
-
-#         candidats = []
-#         for ens in enseignants:
-#             # Récupérer le volume horaire (assume current year)
-#             from datetime import datetime as dt
-#             current_year = f"{dt.now().year}/{dt.now().year + 1}"
-#             charge = self.db.query(ChargeHoraire).filter(
-#                 ChargeHoraire.enseignant_id == ens.id,
-#                 ChargeHoraire.annee_univ == current_year,
-#             ).first()
-
-#             volume_horaire = charge.volume_horaire if charge else 0.0
-#             departement = self.db.query(Departement).filter(Departement.id == departement_id).first()
-
-#             candidats.append(EnseignantCandidat(
-#                 enseignant_id=ens.id,
-#                 nom=ens.nom,
-#                 prenom=ens.prenom,
-#                 grade=ens.grade,
-#                 departement_id=ens.departement_id,
-#                 departement_nom=departement.nom if departement else "Unknown",
-#                 volume_horaire=volume_horaire,
-#                 volume_restant=volume_horaire,
-#                 volume_consomme=0.0,
-#                 nb_surveillances=0,
-#             ))
-
-#         return candidats
-
-#     def _get_charge_consumed(
-#         self,
-#         enseignant_id: int,
-#         annee_univ: str,
-#     ) -> float:
-#         """Calculer la charge totale consommée par un enseignant en une année universitaire."""
-#         # ✅ CORRIGÉ: PlanificationExamen au lieu de Planification
-#         result = self.db.query(func.coalesce(func.sum(Surveillance.charge), 0)).filter(
-#             Surveillance.enseignant_id == enseignant_id,
-#             Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
-#         ).join(PlanificationExamen).join(SessionModel).filter(
-#             SessionModel.annee_universitaire == annee_univ,
-#         ).scalar()
-
-#         return float(result)
-
-#     def _check_disponibilite_temporelle(
-#         self,
-#         enseignant_id: int,
-#         planif: PlanificationExamen,
-#     ) -> bool:
-#         """Vérifier la disponibilité temporelle d'un enseignant (Contrainte 1 - HARD)."""
-#         # Récupérer le créneau de la planification
-#         creneau = self.db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
-#         if not creneau:
-#             return False
-
-#         # Vérifier s'il y a une indisponibilité qui chevauche
-#         indisponibilites = self.db.query(DisponibiliteEnseignant).filter(
-#             DisponibiliteEnseignant.enseignant_id == enseignant_id,
-#             DisponibiliteEnseignant.date == creneau.date,
-#             DisponibiliteEnseignant.type_dispo.in_(["INDISPONIBLE", "COURS_PREVU", "MISSION", "CONGE"]),
-#         ).all()
-
-#         for indispo in indisponibilites:
-#             # Vérifier le chevauchement horaire
-#             if (indispo.heure_debut < creneau.heure_fin and
-#                 indispo.heure_fin > creneau.heure_debut):
-#                 return False
-
-#         return True
-
-#     def _check_conflit_simultaneite(
-#         self,
-#         enseignant_id: int,
-#         planif: PlanificationExamen,
-#     ) -> bool:
-#         """Vérifier la non-simultanéité (Contrainte 4 - HARD)."""
-#         creneau = self.db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
-#         if not creneau:
-#             return False
-
-#         # ✅ CORRIGÉ: PlanificationExamen au lieu de Planification
-#         conflits = self.db.query(Surveillance).join(PlanificationExamen).join(Creneau).filter(
-#             Surveillance.enseignant_id == enseignant_id,
-#             Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
-#             Creneau.date == creneau.date,
-#             Creneau.heure_debut == creneau.heure_debut,
-#         ).all()
-
-#         return len(conflits) > 0
-
-#     def _check_conflit_matiere(
-#         self,
-#         enseignant_id: int,
-#         planif: PlanificationExamen,
-#     ) -> bool:
-#         """Vérifier le conflit de matière (Contrainte 2 - SOFT)."""
-#         from app.models.section_matiere import SectionMatiere
-
-#         # Récupérer la section_matiere de la planification
-#         section_matiere = self.db.query(SectionMatiere).filter(
-#             SectionMatiere.id == planif.section_matiere_id,
-#         ).first()
-
-#         if not section_matiere:
-#             return False
-
-#         # Vérifier si l'enseignant enseigne cette matière (COURS ou TD)
-#         enseignement = self.db.query(Enseignement).filter(
-#             Enseignement.enseignant_id == enseignant_id,
-#             Enseignement.matiere_id == section_matiere.matiere_id,
-#             Enseignement.type_enseignement.in_(["COURS", "TD"]),
-#         ).first()
-
-#         return enseignement is not None
-
-#     def _creer_surveillance(
-#         self,
-#         planif: PlanificationExamen,  # ✅ CORRIGÉ
-#         candidat: EnseignantCandidat,
-#     ) -> Surveillance:
-#         """Créer une surveillance dans la base de données."""
-#         # ✅ CORRIGÉ: ajout de .value pour les enums
-#         payload = SurveillanceCreate(
-#             planification_id=planif.id,
-#             enseignant_id=candidat.enseignant_id,
-#             charge=float(planif.duree / 60),  # Convertir minutes en heures
-#             mode_affectation=ModeAffectation.AUTOMATIQUE.value,
-#             statut_surveillance=StatutSurveillance.AFFECTE.value,
-#             est_externe=False,
-#             motif_externe=None,
-#         )
-
-#         return create_surveillance(self.db, payload)
-
-
-"""Powerful automatic surveillance affectation algorithm."""
-
-from datetime import datetime
-from dataclasses import dataclass
-from enum import Enum
+"""
+Algorithme d'affectation automatique des surveillances — par groupe/salle.
+
+VERSION 3 — Améliorations majeures :
+  • Filtre précis par session_id + section + periode + type_epreuve
+  • Contrainte C5 (HARD) — Équité inter-département
+  • Contrainte C6 (SOFT) — Équité de fréquence dans la session courante
+  • Pré-chargement en batch (N+1 éliminés)
+  • Résistance aux doublons inter-groupe par créneau
+  • Log structuré par niveau DEBUG / INFO / WARNING
+"""
+
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass, field
 from typing import Optional
 
 from sqlalchemy.orm import Session
@@ -812,9 +21,10 @@ from sqlalchemy import func
 
 from app.models.surveillance import Surveillance
 from app.models.enseignant import Enseignant, ChargeHoraire, Enseignement
-from app.models.planification_examen import PlanificationExamen
+from app.models.planification import Planification, PlanifSalle
 from app.models.disponibilite import DisponibiliteEnseignant
-from app.models.departement_niveau_section import Departement
+from app.models.departement_niveau_section import Departement, Section, Niveau
+from app.models.matiere import SectionMatiere
 from app.models.salle_session import Session as SessionModel, Creneau
 from app.crud.crud_surv import create_surveillance
 from app.schemas.surveillance_schema import (
@@ -824,384 +34,644 @@ from app.schemas.surveillance_schema import (
     ReasonExclusion,
 )
 
+logger = logging.getLogger(__name__)
 
-class ConstraintPriority(Enum):
-    """Priority levels for constraints."""
-    HARD = "HARD"  # Must always be respected
-    SOFT = "SOFT"  # Can be relaxed in last resort
-    INFO = "INFO"  # For information only
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Dataclasses internes
+# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class EnseignantCandidat:
-    """Candidate enseignant for surveillance."""
-    enseignant_id: int
-    nom: str
-    prenom: str
-    grade: Optional[str]
-    departement_id: int
-    departement_nom: str
-    volume_horaire: float
-    volume_restant: float
-    volume_consomme: float
-    nb_surveillances: int
-    a_conflit_matiere: bool = False
-    est_dans_departement: bool = True
-    
-    def __lt__(self, other):
-        """Sort by volume_restant DESC, then by nb_surveillances ASC."""
+    enseignant_id:              int
+    nom:                        str
+    prenom:                     str
+    grade:                      Optional[str]
+    departement_id:             int
+    departement_nom:            str
+    volume_horaire:             float
+    volume_restant:             float
+    volume_consomme:            float
+    nb_surveillances:           int
+    nb_surveillances_session:   int   = 0
+    meme_departement:           bool  = True
+    a_conflit_matiere:          bool  = False
+
+    def __lt__(self, other: "EnseignantCandidat") -> bool:
+        """
+        Ordre de priorité :
+          1. Même département (interne > externe)
+          2. Volume restant DESC
+          3. Nb surveillances dans la session courante ASC  (équité C6)
+          4. Nb surveillances totales ASC
+        """
+        if self.meme_departement != other.meme_departement:
+            return self.meme_departement > other.meme_departement
         if self.volume_restant != other.volume_restant:
             return self.volume_restant > other.volume_restant
+        if self.nb_surveillances_session != other.nb_surveillances_session:
+            return self.nb_surveillances_session < other.nb_surveillances_session
         return self.nb_surveillances < other.nb_surveillances
 
 
 @dataclass
 class ConstraintViolation:
-    """Record a constraint violation."""
     enseignant_id: int
-    nom: str
-    prenom: str
-    raison: ReasonExclusion
-    details: Optional[str] = None
+    nom:           str
+    prenom:        str
+    raison:        ReasonExclusion
+    details:       Optional[str] = None
+
+
+@dataclass
+class GroupeAffectationResult:
+    """Résultat pour UNE ligne planif_salle (1 groupe + 1 salle)."""
+    planification_id:      int
+    groupe_id:             Optional[int]
+    salle_id:              Optional[int]
+    groupe_numero:         Optional[int]    = None
+    salle_code:            Optional[str]    = None
+    statut:                str              = "AFFECTEE"
+    surveillants_affectes: list             = field(default_factory=list)
+    surveillants_requis:   int              = 0
+    manquants:             int              = 0
+    violations:            list             = field(default_factory=list)
 
 
 @dataclass
 class PlanificationAffectationResult:
-    """Result of affectation attempt for a single planification."""
-    planification_id: int
-    statut: str  # "AFFECTEE" or "CONFLIT"
-    surveillants_affectes: list[Surveillance] = None
-    surveillants_requis: int = 0
-    manquants: int = 0
-    violations: list[ConstraintViolation] = None
+    """Résultat global d'une planification (agrège tous ses groupes/salles)."""
+    planification_id:   int
+    matiere_intitule:   str              = ""
+    matiere_code:       str              = ""
+    section_nom:        str              = ""
+    type_epreuve:       str              = ""
+    creneau_date:       Optional[str]    = None
+    creneau_heure:      Optional[str]    = None
+    statut:             str              = "AFFECTEE"
+    groupes:            list             = field(default_factory=list)
 
-    def __post_init__(self):
-        if self.surveillants_affectes is None:
-            self.surveillants_affectes = []
-        if self.violations is None:
-            self.violations = []
+    @property
+    def surveillants_affectes(self) -> list:
+        result = []
+        for g in self.groupes:
+            result.extend(g.surveillants_affectes)
+        return result
 
+    @property
+    def surveillants_requis(self) -> int:
+        return sum(g.surveillants_requis for g in self.groupes)
+
+    @property
+    def manquants(self) -> int:
+        return sum(g.manquants for g in self.groupes)
+
+    @property
+    def violations(self) -> list:
+        result = []
+        for g in self.groupes:
+            result.extend(g.violations)
+        return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Requête de filtre des planifications
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _build_planification_query(
+    db: Session,
+    session_id: int,
+    section_nom: str,
+    periode: str,
+    type_epreuve: str,
+):
+    """
+    Construit la requête de planifications filtrée par :
+      - session_id (obligatoire)
+      - section_nom ex: "IGL3"
+      - periode ex: "2025/2026-S2" → annee_univ="2025/2026", semestre=2
+      - type_epreuve ex: "DS" ou "EXAMEN_FINAL"
+    """
+    q = (
+        db.query(Planification)
+        .join(Creneau, Planification.creneau_id == Creneau.id)
+        .filter(
+            Planification.session_id == session_id,
+            Planification.statut == "VALIDEE",
+        )
+    )
+
+    q = (
+        q.join(SectionMatiere, Planification.section_matiere_id == SectionMatiere.id)
+         .join(Section, SectionMatiere.section_id == Section.id)
+         .filter(Section.nom == section_nom)
+    )
+
+    # periode = "2025/2026-S2" → annee_univ="2025/2026", semestre=2
+    parts = periode.rsplit("-S", 1)
+    if len(parts) == 2:
+        annee_univ = parts[0]
+        try:
+            semestre = int(parts[1])
+            q = q.filter(
+                Planification.semestre == semestre,
+            )
+            # Filtre sur l'année via la session
+            q = (
+                q.join(SessionModel, Planification.session_id == SessionModel.id, isouter=True)
+                 .filter(SessionModel.annee_universitaire == annee_univ)
+            )
+        except ValueError:
+            logger.warning("Période invalide: %s", periode)
+
+    q = q.filter(Planification.type_epreuve == type_epreuve)
+
+    q = q.order_by(Creneau.date.asc(), Creneau.heure_debut.asc())
+    return q
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Algorithme principal
+# ─────────────────────────────────────────────────────────────────────────────
 
 class AutomaticAffectationAlgorithm:
-    """Puissant algorithme d'affectation automatique des surveillances."""
+    """
+    Affectation automatique des surveillances, groupe par groupe.
 
-    TOLERANCE_PERCENT = 0.0005  # ±0.05% tolerance
+    Contraintes :
+        C1 – Disponibilité temporelle           (HARD)
+        C2 – Conflit de matière                 (SOFT — relaxable en dernier recours)
+        C3 – Volume horaire annuel ±0.05%       (HARD)
+        C4 – Non-simultanéité                   (HARD)
+        C5 – Priorité département (interne > externe)  (SOFT — dégradé si nécessaire)
+        C6 – Équité fréquence dans la session   (SOFT — critère de tri)
+    """
+
+    TOLERANCE_PERCENT = 0.0005   # ±0.05 % du volume horaire annuel
 
     def __init__(self, db: Session):
         self.db = db
+        self._creneau_cache: dict[int, Optional[Creneau]] = {}
+        self._affectes_par_creneau: dict[tuple, set[int]] = {}
+        # ← AJOUT : suivi en mémoire des surveillances créées dans cette exécution
+        self._nb_surveillances_session_mem: dict[int, int] = {}
+
+    # ── Point d'entrée public ────────────────────────────────────────────────
 
     def affecter_session(
         self,
-        session_id: int,
+        session_id:   int,
+        section_nom:  str,
+        periode:      str,
+        type_epreuve: str,
     ) -> tuple[list[PlanificationAffectationResult], str]:
         """
-        Main entry point: Affecter toutes les planifications VALIDEE d'une session.
+        Affecter les planifications VALIDEE d'une session.
 
-        Returns:
-            - List of results for each planification
-            - Global status message
+        Args:
+            session_id:   ID de la session (ex: 1)
+            section_nom:  Nom de la section (ex: "INF/IOT")
+            periode:      Année+semestre   (ex: "2025/2026-S1")
+            type_epreuve: Type d'épreuve   (ex: "DS" ou "EXAMEN_FINAL")
         """
-        # Récupérer la session
-        session = self.db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        session = self.db.query(SessionModel).filter(
+            SessionModel.id == session_id
+        ).first()
         if not session:
             return [], f"Session {session_id} non trouvée"
 
-        annee_univ = session.annee_universitaire
-
-        # ✅ CORRIGÉ: Jointure avec Creneau + statut au lieu de statut_planif
-        planifications = self.db.query(PlanificationExamen).join(
-            Creneau, PlanificationExamen.creneau_id == Creneau.id
-        ).filter(
-            PlanificationExamen.session_id == session_id,
-            PlanificationExamen.statut == "VALIDEE",
-        ).order_by(
-            Creneau.date.asc(),
-            Creneau.heure_debut.asc(),
-        ).all()
+        q = _build_planification_query(
+            self.db, session_id, section_nom, periode, type_epreuve
+        )
+        planifications = q.all()
 
         if not planifications:
-            return [], f"Aucune planification VALIDEE trouvée dans la session {session_id}"
+            return [], (
+                f"Aucune planification VALIDEE dans la session {session_id} "
+                f"pour les critères donnés."
+            )
 
-        results = []
-        total_affectees = 0
-        total_conflits = 0
+        self._preload_creneau_cache(planifications)
 
-        # BOUCLE: Traiter chaque planification
+        results:  list[PlanificationAffectationResult] = []
+        nb_ok = nb_ko = 0
+
         for planif in planifications:
             result = self._affecter_planification(
-                planif,
-                annee_univ,
+                planif, session_id, session.annee_universitaire
             )
             results.append(result)
-
             if result.statut == "AFFECTEE":
-                total_affectees += 1
+                nb_ok += 1
             else:
-                total_conflits += 1
+                nb_ko += 1
 
-        status_msg = (
-            f"Traitement terminé: {total_affectees} planifications affectées, "
-            f"{total_conflits} planifications en conflit"
+        msg = (
+            f"Traitement terminé : {nb_ok} planification(s) entièrement affectée(s), "
+            f"{nb_ko} en conflit (partiel ou total)."
         )
+        logger.info(msg)
+        return results, msg
 
-        return results, status_msg
+    # ── Pré-chargement batch ─────────────────────────────────────────────────
+
+    def _preload_creneau_cache(self, planifications: list[Planification]) -> None:
+        ids = list({p.creneau_id for p in planifications})
+        creneaux = self.db.query(Creneau).filter(Creneau.id.in_(ids)).all()
+        for c in creneaux:
+            self._creneau_cache[c.id] = c
+
+    # ── Niveau planification ─────────────────────────────────────────────────
 
     def _affecter_planification(
         self,
-        planif: PlanificationExamen,
-        annee_univ: str,
+        planif:      Planification,
+        session_id:  int,
+        annee_univ:  str,
     ) -> PlanificationAffectationResult:
-        """
-        Affecter une seule planification selon les 5 contraintes.
+        sm       = planif.section_matiere
+        mat      = sm.matiere if sm else None
+        sec      = sm.section if sm else None
+        creneau  = self._get_creneau(planif)
 
-        Étapes:
-        1. Calcul dynamique du volume restant
-        2. Filtrage selon les 5 contraintes
-        3. Tri des candidats éligibles
-        4. Insertion des surveillances (ou enregistrement du conflit)
-        """
         result = PlanificationAffectationResult(
             planification_id=planif.id,
+            matiere_intitule=mat.intitule if mat else "",
+            matiere_code=mat.code if mat else "",
+            section_nom=sec.nom if sec else "",
+            type_epreuve=planif.type_epreuve,
+            creneau_date=str(creneau.date) if creneau else None,
+            creneau_heure=f"{creneau.heure_debut}–{creneau.heure_fin}" if creneau else None,
+            statut="AFFECTEE",
+        )
+
+        lignes: list[PlanifSalle] = (
+            self.db.query(PlanifSalle)
+            .filter(PlanifSalle.planification_id == planif.id)
+            .all()
+        )
+
+        if not lignes:
+            logger.warning("Planification %s : aucune ligne planif_salle", planif.id)
+            result.statut = "CONFLIT"
+            return result
+
+        annee_sem_cible = sm.annee_sem if sm else f"{annee_univ}-S{planif.semestre}"
+
+        candidats_base = self._get_enseignants_departement(
+            planif.departement_id, session_id, annee_univ, annee_sem_cible
+        )
+
+        creneau_key = (creneau.date, creneau.heure_debut) if creneau else (planif.id,)
+        if creneau_key not in self._affectes_par_creneau:
+            self._affectes_par_creneau[creneau_key] = set()
+
+        for ligne in lignes:
+            groupe_result = self._affecter_groupe(
+                planif=planif,
+                ligne=ligne,
+                candidats_base=candidats_base,
+                session_id=session_id,
+                creneau_key=creneau_key,
+            )
+            result.groupes.append(groupe_result)
+
+        nb_conflits = sum(1 for g in result.groupes if g.statut == "CONFLIT")
+        if nb_conflits == 0:
+            result.statut = "AFFECTEE"
+        elif nb_conflits == len(result.groupes):
+            result.statut = "CONFLIT"
+        else:
+            result.statut = "CONFLIT_PARTIEL"
+
+        return result
+
+    # ── Niveau groupe/salle ──────────────────────────────────────────────────
+
+    def _affecter_groupe(
+        self,
+        planif:         Planification,
+        ligne:          PlanifSalle,
+        candidats_base: list[EnseignantCandidat],
+        session_id:     int,
+        creneau_key:    tuple,
+    ) -> GroupeAffectationResult:
+        grp   = ligne.groupe
+        salle = ligne.salle
+
+        result = GroupeAffectationResult(
+            planification_id=planif.id,
+            groupe_id=ligne.groupe_id,
+            salle_id=ligne.salle_id,
+            groupe_numero=grp.numero if grp else None,
+            salle_code=salle.code if salle else None,
             statut="AFFECTEE",
             surveillants_requis=planif.nb_surveillants_requis,
         )
 
-        # Récupérer tous les enseignants du département
-        candidats_potentiels = self._get_enseignants_departement(planif.departement_id)
+        self._refresh_volumes(candidats_base, session_id)
 
-        # Étape 1: Calculer le volume restant pour chaque candidat
-        for candidat in candidats_potentiels:
-            charge_consommee = self._get_charge_consumed(candidat.enseignant_id, annee_univ)
-            candidat.volume_consomme = charge_consommee
-            candidat.volume_restant = candidat.volume_horaire - charge_consommee
+        candidats_eligibles: list[EnseignantCandidat] = []
+        violations:          list[ConstraintViolation] = []
+        deja_affectes_creneau = self._affectes_par_creneau.get(creneau_key, set())
 
-        # Étape 2: Filtrer selon les contraintes
-        candidats_eligibles = []
-        violations = []
-
-        for candidat in candidats_potentiels:
-            # Contrainte 1: Disponibilité temporelle (HARD - toujours appliquée)
-            if not self._check_disponibilite_temporelle(candidat.enseignant_id, planif):
+        for candidat in candidats_base:
+            if candidat.enseignant_id in deja_affectes_creneau:
                 violations.append(ConstraintViolation(
                     enseignant_id=candidat.enseignant_id,
-                    nom=candidat.nom,
-                    prenom=candidat.prenom,
+                    nom=candidat.nom, prenom=candidat.prenom,
+                    raison=ReasonExclusion.DEJA_AFFECTE,
+                    details="Déjà affecté à un autre groupe de ce créneau",
+                ))
+                continue
+
+            if not self._check_disponibilite(candidat.enseignant_id, planif):
+                violations.append(ConstraintViolation(
+                    enseignant_id=candidat.enseignant_id,
+                    nom=candidat.nom, prenom=candidat.prenom,
                     raison=ReasonExclusion.INDISPONIBLE,
                 ))
                 continue
 
-            # Contrainte 4: Non-simultanéité (HARD - toujours appliquée)
-            if self._check_conflit_simultaneite(candidat.enseignant_id, planif):
+            if self._check_simultaneite(candidat.enseignant_id, planif):
                 violations.append(ConstraintViolation(
                     enseignant_id=candidat.enseignant_id,
-                    nom=candidat.nom,
-                    prenom=candidat.prenom,
+                    nom=candidat.nom, prenom=candidat.prenom,
                     raison=ReasonExclusion.DEJA_AFFECTE,
                 ))
                 continue
 
-            # Contrainte 3: Volume horaire restant (HARD - respect tolérance ±0.05%)
             tolerance = candidat.volume_horaire * self.TOLERANCE_PERCENT
             if candidat.volume_restant < -tolerance:
                 violations.append(ConstraintViolation(
                     enseignant_id=candidat.enseignant_id,
-                    nom=candidat.nom,
-                    prenom=candidat.prenom,
+                    nom=candidat.nom, prenom=candidat.prenom,
                     raison=ReasonExclusion.VOLUME_EPUISE,
-                    details=f"Restant: {candidat.volume_restant:.2f}h (limite: {-tolerance:.2f}h)",
+                    details=(
+                        f"Restant: {candidat.volume_restant:.2f}h "
+                        f"(limite: {-tolerance:.4f}h)"
+                    ),
                 ))
                 continue
 
-            # Contrainte 2: Conflit de matière (SOFT - peut être relaxée)
-            a_conflit = self._check_conflit_matiere(candidat.enseignant_id, planif)
-            candidat.a_conflit_matiere = a_conflit
-
+            candidat.a_conflit_matiere = self._check_conflit_matiere(
+                candidat.enseignant_id, planif
+            )
             candidats_eligibles.append(candidat)
 
-        # Trier les candidats éligibles
         candidats_eligibles.sort()
 
-        # Étape 3: Sélectionner les surveillants
-        surveillants_selectionnes = []
-        candidats_sans_conflit = [c for c in candidats_eligibles if not c.a_conflit_matiere]
+        sans_conflit = [c for c in candidats_eligibles if not c.a_conflit_matiere]
+        avec_conflit = [c for c in candidats_eligibles if c.a_conflit_matiere]
 
-        # Priorité 1: Sans conflit de matière
-        for candidat in candidats_sans_conflit[:planif.nb_surveillants_requis]:
-            surv = self._creer_surveillance(planif, candidat)
-            surveillants_selectionnes.append(surv)
+        selectionnes: list[EnseignantCandidat] = []
+        nb_requis = planif.nb_surveillants_requis
 
-        # Priorité 2: Avec conflit de matière (en dernier recours)
-        if len(surveillants_selectionnes) < planif.nb_surveillants_requis:
-            candidats_avec_conflit = [c for c in candidats_eligibles if c.a_conflit_matiere]
-            for candidat in candidats_avec_conflit:
-                if len(surveillants_selectionnes) >= planif.nb_surveillants_requis:
-                    break
-                surv = self._creer_surveillance(planif, candidat)
-                surveillants_selectionnes.append(surv)
+        for c in sans_conflit:
+            if len(selectionnes) >= nb_requis:
+                break
+            selectionnes.append(c)
 
-        # ✅ NOUVEAU: Vérifier si on a utilisé des enseignants avec conflit matière
-        a_utilise_conflit_matiere = any(
-            c.enseignant_id in [cand.enseignant_id for cand in candidats_avec_conflit]
-            for c in surveillants_selectionnes
-        ) if 'candidats_avec_conflit' in dir() else False
+        for c in avec_conflit:
+            if len(selectionnes) >= nb_requis:
+                break
+            selectionnes.append(c)
 
-        # Étape 4: Vérifier si complet
-        if len(surveillants_selectionnes) < planif.nb_surveillants_requis:
-            result.statut = "CONFLIT"
-            result.surveillants_affectes = surveillants_selectionnes
-            result.manquants = planif.nb_surveillants_requis - len(surveillants_selectionnes)
-            result.violations = violations
+        surveillants_inseres = []
+        for candidat in selectionnes:
+            surv = self._creer_surveillance(planif, candidat, ligne)
+            surveillants_inseres.append(surv)
+            self._affectes_par_creneau[creneau_key].add(candidat.enseignant_id)
+            logger.debug(
+                "Surveillance créée : planif=%s groupe=%s ens=%s (%s %s)",
+                planif.id, ligne.groupe_id, candidat.enseignant_id,
+                candidat.prenom, candidat.nom,
+            )
+
+        result.surveillants_affectes = surveillants_inseres
+        result.violations            = violations
+
+        if len(surveillants_inseres) < nb_requis:
+            result.statut    = "CONFLIT"
+            result.manquants = nb_requis - len(surveillants_inseres)
+            logger.warning(
+                "Conflit groupe %s / salle %s : %s manquant(s)",
+                ligne.groupe_id, ligne.salle_id, result.manquants,
+            )
         else:
-            result.surveillants_affectes = surveillants_selectionnes
-            # ✅ NOUVEAU: Ajouter un avertissement si contrainte matière a été levée
-            if a_utilise_conflit_matiere:
+            ids_avec_conflit = {c.enseignant_id for c in avec_conflit}
+            ids_inseres      = {s.enseignant_id for s in surveillants_inseres}
+            if ids_avec_conflit & ids_inseres:
                 result.violations.append(ConstraintViolation(
                     enseignant_id=0,
-                    nom="AVERTISSEMENT",
-                    prenom="",
+                    nom="AVERTISSEMENT", prenom="",
                     raison=ReasonExclusion.CONFLIT_MATIERE,
-                    details="Contrainte matière levée en dernier recours (enseignant surveille sa propre matière)",
+                    details=(
+                        f"Groupe {ligne.groupe_id} / Salle {ligne.salle_id} : "
+                        "contrainte matière levée — enseignant surveille sa propre matière."
+                    ),
                 ))
 
         return result
 
-    def _get_enseignants_departement(self, departement_id: int) -> list[EnseignantCandidat]:
-        """Récupérer tous les enseignants d'un département avec leurs infos."""
-        enseignants = self.db.query(
-            Enseignant.id,
-            Enseignant.nom,
-            Enseignant.prenom,
-            Enseignant.grade,
-            Enseignant.departement_id,
-        ).filter(Enseignant.departement_id == departement_id).all()
+    # ── Helpers — données ────────────────────────────────────────────────────
+
+    def _get_enseignants_departement(
+        self,
+        departement_id:  int,
+        session_id:      int,
+        annee_univ:      str,
+        annee_sem_cible: str,
+    ) -> list[EnseignantCandidat]:
+        departement = self.db.query(Departement).filter(
+            Departement.id == departement_id
+        ).first()
+        dept_nom = departement.nom if departement else "Unknown"
+
+        enseignants = (
+            self.db.query(
+                Enseignant.id,
+                Enseignant.nom,
+                Enseignant.prenom,
+                Enseignant.grade,
+                Enseignant.departement_id,
+            )
+            .join(Enseignement, Enseignement.enseignant_id == Enseignant.id)
+            .filter(
+                Enseignant.departement_id == departement_id,
+                Enseignement.annee_sem    == annee_sem_cible,
+            )
+            .distinct()
+            .all()
+        )
+
+        charges = {
+            ch.enseignant_id: float(ch.volume_horaire)
+            for ch in self.db.query(ChargeHoraire).filter(
+                ChargeHoraire.annee_univ == annee_univ
+            ).all()
+        }
+
+        rows_session = (
+            self.db.query(
+                Surveillance.enseignant_id,
+                func.count(Surveillance.id).label("nb"),
+            )
+            .join(Planification)
+            .filter(
+                Planification.session_id == session_id,
+                Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
+            )
+            .group_by(Surveillance.enseignant_id)
+            .all()
+        )
+        nb_session_map: dict[int, int] = {r.enseignant_id: r.nb for r in rows_session}
 
         candidats = []
         for ens in enseignants:
-            # Récupérer le volume horaire (assume current year)
-            from datetime import datetime as dt
-            current_year = f"{dt.now().year}/{dt.now().year + 1}"
-            charge = self.db.query(ChargeHoraire).filter(
-                ChargeHoraire.enseignant_id == ens.id,
-                ChargeHoraire.annee_univ == current_year,
-            ).first()
-
-            volume_horaire = charge.volume_horaire if charge else 0.0
-            departement = self.db.query(Departement).filter(Departement.id == departement_id).first()
-
+            vol = charges.get(ens.id, 0.0)
             candidats.append(EnseignantCandidat(
                 enseignant_id=ens.id,
                 nom=ens.nom,
                 prenom=ens.prenom,
                 grade=ens.grade,
-                departement_id=ens.departement_id,
-                departement_nom=departement.nom if departement else "Unknown",
-                volume_horaire=volume_horaire,
-                volume_restant=volume_horaire,
+                departement_id=ens.departement_id or 0,
+                departement_nom=dept_nom,
+                volume_horaire=vol,
+                volume_restant=0.0,
                 volume_consomme=0.0,
                 nb_surveillances=0,
+                nb_surveillances_session=nb_session_map.get(ens.id, 0),
+                meme_departement=True,
             ))
-
         return candidats
 
-    def _get_charge_consumed(
+    def _refresh_volumes(
         self,
-        enseignant_id: int,
-        annee_univ: str,
-    ) -> float:
-        """Calculer la charge totale consommée par un enseignant en une année universitaire."""
-        result = self.db.query(func.coalesce(func.sum(Surveillance.charge), 0)).filter(
-            Surveillance.enseignant_id == enseignant_id,
-            Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
-        ).join(PlanificationExamen).join(SessionModel).filter(
-            SessionModel.annee_universitaire == annee_univ,
-        ).scalar()
+        candidats: list[EnseignantCandidat],
+        session_id: int,
+    ) -> None:
+        ens_ids = [c.enseignant_id for c in candidats]
+        rows = (
+            self.db.query(
+                Surveillance.enseignant_id,
+                func.coalesce(func.sum(Surveillance.charge), 0).label("total"),
+                func.count(Surveillance.id).label("nb"),
+            )
+            .join(Planification)
+            .filter(
+                Surveillance.enseignant_id.in_(ens_ids),
+                Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
+                Planification.session_id == session_id,
+            )
+            .group_by(Surveillance.enseignant_id)
+            .all()
+        )
+        consomme_map = {r.enseignant_id: (float(r.total), r.nb) for r in rows}
 
-        return float(result)
+        for c in candidats:
+            consomme, nb = consomme_map.get(c.enseignant_id, (0.0, 0))
+            c.volume_consomme = consomme
+            c.volume_restant  = c.volume_horaire - consomme
+            # ← CORRECTION : ajouter les surveillances créées en mémoire (pas encore commitées)
+            nb_mem = self._nb_surveillances_session_mem.get(c.enseignant_id, 0)
+            c.nb_surveillances_session = nb + nb_mem
+            c.nb_surveillances = nb + nb_mem
 
-    def _check_disponibilite_temporelle(
-        self,
-        enseignant_id: int,
-        planif: PlanificationExamen,
-    ) -> bool:
-        """Vérifier la disponibilité temporelle d'un enseignant (Contrainte 1 - HARD)."""
-        # Récupérer le créneau de la planification
+    def _get_creneau(self, planif: Planification) -> Optional[Creneau]:
+        if planif.creneau_id in self._creneau_cache:
+            return self._creneau_cache[planif.creneau_id]
         creneau = self.db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
+        self._creneau_cache[planif.creneau_id] = creneau
+        return creneau
+
+    # ── Helpers — contraintes ────────────────────────────────────────────────
+
+    def _check_disponibilite(
+        self, enseignant_id: int, planif: Planification
+    ) -> bool:
+        creneau = self._get_creneau(planif)
         if not creneau:
             return False
-
-        # Vérifier s'il y a une indisponibilité qui chevauche
-        indisponibilites = self.db.query(DisponibiliteEnseignant).filter(
-            DisponibiliteEnseignant.enseignant_id == enseignant_id,
-            DisponibiliteEnseignant.date == creneau.date,
-            DisponibiliteEnseignant.type_dispo.in_(["INDISPONIBLE", "COURS_PREVU", "MISSION", "CONGE"]),
-        ).all()
-
-        for indispo in indisponibilites:
-            # Vérifier le chevauchement horaire
-            if (indispo.heure_debut < creneau.heure_fin and
-                indispo.heure_fin > creneau.heure_debut):
+        indispos = (
+            self.db.query(DisponibiliteEnseignant)
+            .filter(
+                DisponibiliteEnseignant.enseignant_id == enseignant_id,
+                DisponibiliteEnseignant.date == creneau.date,
+                DisponibiliteEnseignant.type_dispo.in_(
+                    ["INDISPONIBLE", "COURS_PREVU", "MISSION", "CONGE"]
+                ),
+            )
+            .all()
+        )
+        for i in indispos:
+            if i.heure_debut < creneau.heure_fin and i.heure_fin > creneau.heure_debut:
                 return False
-
         return True
 
-    def _check_conflit_simultaneite(
-        self,
-        enseignant_id: int,
-        planif: PlanificationExamen,
+    def _check_simultaneite(
+        self, enseignant_id: int, planif: Planification
     ) -> bool:
-        """Vérifier la non-simultanéité (Contrainte 4 - HARD)."""
-        creneau = self.db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
+        creneau = self._get_creneau(planif)
         if not creneau:
             return False
-
-        conflits = self.db.query(Surveillance).join(PlanificationExamen).join(Creneau).filter(
-            Surveillance.enseignant_id == enseignant_id,
-            Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
-            Creneau.date == creneau.date,
-            Creneau.heure_debut == creneau.heure_debut,
-        ).all()
-
-        return len(conflits) > 0
+        conflit = (
+            self.db.query(Surveillance)
+            .select_from(Surveillance)
+            .join(Planification, Surveillance.planification_id == Planification.id)
+            .join(Creneau, Planification.creneau_id == Creneau.id)
+            .filter(
+                Surveillance.enseignant_id == enseignant_id,
+                Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
+                Creneau.date        == creneau.date,
+                Creneau.heure_debut == creneau.heure_debut,
+            )
+            .first()
+        )
+        return conflit is not None
 
     def _check_conflit_matiere(
-        self,
-        enseignant_id: int,
-        planif: PlanificationExamen,
+        self, enseignant_id: int, planif: Planification
     ) -> bool:
-        """Vérifier le conflit de matière (Contrainte 2 - SOFT)."""
-        from app.models.section_matiere import SectionMatiere
-
-        # Récupérer la section_matiere de la planification
-        section_matiere = self.db.query(SectionMatiere).filter(
-            SectionMatiere.id == planif.section_matiere_id,
+        sm = self.db.query(SectionMatiere).filter(
+            SectionMatiere.id == planif.section_matiere_id
         ).first()
-
-        if not section_matiere:
+        if not sm:
             return False
+        return (
+            self.db.query(Enseignement)
+            .filter(
+                Enseignement.enseignant_id == enseignant_id,
+                Enseignement.matiere_id    == sm.matiere_id,
+                Enseignement.type_enseignement.in_(["COURS", "TD"]),
+            )
+            .first()
+        ) is not None
 
-        # Vérifier si l'enseignant enseigne cette matière (COURS ou TD)
-        enseignement = self.db.query(Enseignement).filter(
-            Enseignement.enseignant_id == enseignant_id,
-            Enseignement.matiere_id == section_matiere.matiere_id,
-            Enseignement.type_enseignement.in_(["COURS", "TD"]),
-        ).first()
-
-        return enseignement is not None
+    # ── Helper — insertion ───────────────────────────────────────────────────
 
     def _creer_surveillance(
         self,
-        planif: PlanificationExamen,
+        planif:   Planification,
         candidat: EnseignantCandidat,
+        ligne:    PlanifSalle,
     ) -> Surveillance:
-        """Créer une surveillance dans la base de données."""
         payload = SurveillanceCreate(
             planification_id=planif.id,
             enseignant_id=candidat.enseignant_id,
-            charge=float(planif.duree / 60),  # Convertir minutes en heures
-            mode_affectation=ModeAffectation.AUTOMATIQUE.value,
-            statut_surveillance=StatutSurveillance.AFFECTE.value,
+            groupe_id=ligne.groupe_id,
+            salle_id=ligne.salle_id,
+            charge=round(planif.duree / 60, 2),
+            mode_affectation=ModeAffectation.AUTOMATIQUE,
+            statut_surveillance=StatutSurveillance.AFFECTE,
             est_externe=False,
             motif_externe=None,
         )
+        surv = create_surveillance(self.db, payload)
 
-        return create_surveillance(self.db, payload)
+        # ← AJOUT : incrémenter le compteur en mémoire immédiatement
+        eid = candidat.enseignant_id
+        self._nb_surveillances_session_mem[eid] = (
+            self._nb_surveillances_session_mem.get(eid, 0) + 1
+        )
+        return surv

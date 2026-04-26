@@ -1,455 +1,8 @@
-# """Business logic for surveillance module."""
-
-# from typing import Optional
-# from datetime import datetime
-
-# from sqlalchemy import func
-# from sqlalchemy.orm import Session as SQLSession
-
-# from app.algorithms.surv_auto import AutomaticAffectationAlgorithm
-# from app.crud.crud_surv import (
-#     create_surveillance,
-#     create_surveillances_batch,
-#     delete_surveillance,
-#     delete_surveillance_by_id,
-#     delete_surveillances_for_planification,
-#     get_surveillance,
-#     get_surveillance_by_planif_and_enseignant,
-#     get_surveillances_for_enseignant,
-#     get_surveillances_for_planification,
-#     list_surveillances,
-#     replace_surveillance,
-#     update_surveillance,
-#     get_enseignant_charge_for_year,
-#     count_surveillances_for_enseignant,
-# )
-# from app.models.surveillance import Surveillance
-# from app.models.planification_examen import PlanificationExamen
-# from app.models.enseignant import Enseignant, ChargeHoraire
-# from app.models.disponibilite import DisponibiliteEnseignant
-# from app.models.salle_session import Session
-# from app.schemas.surveillance_schema import (
-#     SurveillanceCreate,
-#     SurveillanceUpdate,
-#     ManualAssignmentRequest,
-#     ManualAssignmentBatchRequest,
-#     EnseignantDisponible,
-# )
-
-
-# class SurvService:
-#     """Business logic layer for surveillance module."""
-
-#     def __init__(self, db: SQLSession):
-#         self.db = db
-#         self.algorithm = AutomaticAffectationAlgorithm(db)
-
-#     # ========================================================================
-#     # CONSULTATION & LISTING
-#     # ========================================================================
-
-#     def get_all_surveillances(
-#         self,
-#         *,
-#         planification_id: Optional[int] = None,
-#         enseignant_id: Optional[int] = None,
-#         session_id: Optional[int] = None,
-#         est_externe: Optional[bool] = None,
-#         skip: int = 0,
-#         limit: int = 50,
-#     ) -> list[Surveillance]:
-#         """Get all surveillances with optional filters."""
-#         return list_surveillances(
-#             self.db,
-#             planification_id=planification_id,
-#             enseignant_id=enseignant_id,
-#             session_id=session_id,
-#             est_externe=est_externe,
-#             skip=skip,
-#             limit=limit,
-#         )
-
-#     def get_surveillance_by_id(self, surveillance_id: int) -> Optional[Surveillance]:
-#         """Get a surveillance by ID."""
-#         return get_surveillance(self.db, surveillance_id)
-
-#     def get_surveillances_for_planification(
-#         self, planification_id: int
-#     ) -> list[Surveillance]:
-#         """Get all surveillances for a planification."""
-#         return get_surveillances_for_planification(self.db, planification_id)
-
-#     def get_surveillances_for_enseignant(
-#         self,
-#         enseignant_id: int,
-#         annee_universitaire: Optional[str] = None,
-#     ) -> list[Surveillance]:
-#         """Get all surveillances for an enseignant."""
-#         return get_surveillances_for_enseignant(
-#             self.db,
-#             enseignant_id,
-#             annee_universitaire,
-#         )
-
-#     # ========================================================================
-#     # CREATION & MODIFICATION
-#     # ========================================================================
-
-#     def create_surveillance(self, payload: SurveillanceCreate) -> Surveillance:
-#         """Create a new surveillance."""
-#         return create_surveillance(self.db, payload)
-
-#     def update_surveillance(
-#         self,
-#         surveillance_id: int,
-#         payload: SurveillanceUpdate,
-#     ) -> Optional[Surveillance]:
-#         """Update a surveillance."""
-#         surveillance = get_surveillance(self.db, surveillance_id)
-#         if not surveillance:
-#             return None
-#         return update_surveillance(self.db, surveillance, payload)
-
-#     def delete_surveillance(self, surveillance_id: int) -> bool:
-#         """Delete a surveillance (physical deletion)."""
-#         return delete_surveillance_by_id(self.db, surveillance_id)
-
-#     def replace_surveillance(
-#         self,
-#         surveillance_id: int,
-#         new_enseignant_id: int,
-#         motif: str,
-#     ) -> Optional[tuple]:
-#         """Replace an enseignant on a surveillance."""
-#         old = get_surveillance(self.db, surveillance_id)
-#         if not old:
-#             return None
-#         return replace_surveillance(self.db, old, new_enseignant_id, motif)
-
-#     # ========================================================================
-#     # AUTOMATIC AFFECTATION
-#     # ========================================================================
-
-#     def affecter_session_automatique(self, session_id: int) -> tuple:
-#         """
-#         Lancer l'affectation automatique pour toutes les planifications VALIDEE
-#         d'une session.
-
-#         Returns:
-#             - results: List of PlanificationAffectationResult
-#             - message: Status message
-#         """
-#         return self.algorithm.affecter_session(session_id)
-
-#     # ========================================================================
-#     # MANUAL AFFECTATION
-#     # ========================================================================
-
-#     def affecter_planification_manuellement(
-#         self,
-#         request: ManualAssignmentRequest,
-#     ) -> dict:
-#         """
-#         Handle manual affectation for a single conflicted planification.
-
-#         Validates constraints 1 and 4 only.
-#         """
-#         # Récupérer la planification
-#         planif = self.db.query(PlanificationExamen).filter(
-#             PlanificationExamen.id == request.planification_id,
-#             PlanificationExamen.session_id == request.session_id,
-#         ).first()
-
-#         if not planif:
-#             raise ValueError(f"Planification {request.planification_id} non trouvée dans la session")
-
-#         # Récupérer la session pour l'année universitaire
-#         session = self.db.query(Session).filter(
-#             Session.id == request.session_id,
-#         ).first()
-
-#         # Valider les enseignants et créer les surveillances
-#         surveillances_creees = []
-#         erreurs = []
-
-#         for ens_id in request.enseignant_ids:
-#             # Vérifier contrainte 1 (disponibilité)
-#             if not self._check_disponibilite_temporelle(ens_id, planif):
-#                 erreurs.append({
-#                     "enseignant_id": ens_id,
-#                     "raison": "INDISPONIBLE",
-#                 })
-#                 continue
-
-#             # Vérifier contrainte 4 (non-simultanéité)
-#             if self._check_conflit_simultaneite(ens_id, planif):
-#                 erreurs.append({
-#                     "enseignant_id": ens_id,
-#                     "raison": "DEJA_AFFECTE",
-#                 })
-#                 continue
-
-#             # Déterminer si externe
-#             ens = self.db.query(Enseignant).filter(Enseignant.id == ens_id).first()
-#             est_externe = ens.departement_id != planif.departement_id
-
-#             motif = request.motifs_externes.get(ens_id) if est_externe else None
-
-#             payload = SurveillanceCreate(
-#                 planification_id=request.planification_id,
-#                 enseignant_id=ens_id,
-#                 charge=float(planif.duree / 60),
-#                 mode_affectation="MANUELLE",
-#                 est_externe=est_externe,
-#                 motif_externe=motif,
-#             )
-
-#             surv = create_surveillance(self.db, payload)
-#             surveillances_creees.append(surv)
-
-#         if erreurs:
-#             # Tout ou rien: si une erreur, on delete tout ce qui a été créé
-#             for surv in surveillances_creees:
-#                 delete_surveillance(self.db, surv)
-#             raise ValueError(f"Validation échouée: {erreurs}")
-
-#         return {
-#             "planification_id": request.planification_id,
-#             "statut": "CONFLIT_RESOLU",
-#             "surveillants_inseres": len(surveillances_creees),
-#         }
-
-#     def affecter_session_manuellement(
-#         self,
-#         request: ManualAssignmentBatchRequest,
-#     ) -> dict:
-#         """
-#         Handle full manual affectation for an entire session.
-
-#         Validates constraints 1 and 4 only.
-#         One transaction for all planifications.
-#         """
-#         # Récupérer la session
-#         session = self.db.query(SessionModel).filter(
-#             SessionModel.id == request.session_id,
-#         ).first()
-
-#         if not session:
-#             raise ValueError(f"Session {request.session_id} non trouvée")
-
-#         annee_univ = session.annee_universitaire
-
-#         # Valider toutes les affectations d'abord
-#         all_valid_payloads = []
-#         erreurs_globales = []
-
-#         for planif_id, ens_ids in request.affectations.items():
-#             # Récupérer la planification
-#             planif = self.db.query(Planification).filter(
-#                 Planification.id == planif_id,
-#                 Planification.session_id == request.session_id,
-#             ).first()
-
-#             if not planif:
-#                 erreurs_globales.append({
-#                     "planification_id": planif_id,
-#                     "erreur": "Non trouvée",
-#                 })
-#                 continue
-
-#             for ens_id in ens_ids:
-#                 # Vérifier contrainte 1
-#                 if not self._check_disponibilite_temporelle(ens_id, planif):
-#                     erreurs_globales.append({
-#                         "planification_id": planif_id,
-#                         "enseignant_id": ens_id,
-#                         "raison": "INDISPONIBLE",
-#                     })
-#                     continue
-
-#                 # Vérifier contrainte 4
-#                 if self._check_conflit_simultaneite(ens_id, planif):
-#                     erreurs_globales.append({
-#                         "planification_id": planif_id,
-#                         "enseignant_id": ens_id,
-#                         "raison": "DEJA_AFFECTE",
-#                     })
-#                     continue
-
-#                 # Déterminer si externe
-#                 ens = self.db.query(Enseignant).filter(Enseignant.id == ens_id).first()
-#                 est_externe = ens.departement_id != planif.departement_id
-#                 motif = request.motifs_externes.get(ens_id) if est_externe else None
-
-#                 payload = SurveillanceCreate(
-#                     planification_id=planif_id,
-#                     enseignant_id=ens_id,
-#                     charge=float(planif.duree / 60),
-#                     mode_affectation="MANUELLE",
-#                     est_externe=est_externe,
-#                     motif_externe=motif,
-#                 )
-
-#                 all_valid_payloads.append(payload)
-
-#         if erreurs_globales:
-#             raise ValueError(f"Validation échouée: {erreurs_globales}")
-
-#         # Transaction unique pour toutes les surveillances
-#         surveillances = create_surveillances_batch(self.db, all_valid_payloads)
-
-#         return {
-#             "session_id": request.session_id,
-#             "statut": "SUCCES",
-#             "total_surveillances_inserees": len(surveillances),
-#         }
-
-#     # ========================================================================
-#     # HELPER METHODS FOR CONSTRAINT CHECKING
-#     # ========================================================================
-
-#     def _check_disponibilite_temporelle(
-#         self,
-#         enseignant_id: int,
-#         planif: Planification,
-#     ) -> bool:
-#         """Vérifier disponibilité temporelle (Contrainte 1)."""
-#         from app.models.creneau import Creneau
-
-#         creneau = self.db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
-#         if not creneau:
-#             return False
-
-#         # Vérifier indisponibilités
-#         indisponibilites = self.db.query(DisponibiliteEnseignant).filter(
-#             DisponibiliteEnseignant.enseignant_id == enseignant_id,
-#             DisponibiliteEnseignant.date == creneau.date,
-#             DisponibiliteEnseignant.type_dispo.in_(["INDISPONIBLE", "COURS_PREVU", "MISSION", "CONGE"]),
-#         ).all()
-
-#         for indispo in indisponibilites:
-#             if indispo.heure_debut < creneau.heure_fin and indispo.heure_fin > creneau.heure_debut:
-#                 return False
-
-#         return True
-
-#     def _check_conflit_simultaneite(
-#         self,
-#         enseignant_id: int,
-#         planif: Planification,
-#     ) -> bool:
-#         """Vérifier non-simultanéité (Contrainte 4)."""
-#         from app.models.creneau import Creneau
-
-#         creneau = self.db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
-#         if not creneau:
-#             return False
-
-#         # Chercher conflits
-#         conflits = self.db.query(Surveillance).join(Planification).join(Creneau).filter(
-#             Surveillance.enseignant_id == enseignant_id,
-#             Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
-#             Creneau.date == creneau.date,
-#             Creneau.heure_debut == creneau.heure_debut,
-#         ).all()
-
-#         return len(conflits) > 0
-
-#     # ========================================================================
-#     # ANALYTICS & REPORTS
-#     # ========================================================================
-
-#     def get_volume_restant_enseignant(
-#         self,
-#         enseignant_id: int,
-#         annee_universitaire: str,
-#     ) -> dict:
-#         """Get volume information for an enseignant."""
-#         charge_horaire = self.db.query(ChargeHoraire).filter(
-#             ChargeHoraire.enseignant_id == enseignant_id,
-#             ChargeHoraire.annee_univ == annee_universitaire,
-#         ).first()
-
-#         volume_horaire = charge_horaire.volume_horaire if charge_horaire else 0.0
-#         volume_consomme = get_enseignant_charge_for_year(
-#             self.db,
-#             enseignant_id,
-#             annee_universitaire,
-#         )
-#         nb_surveillances = count_surveillances_for_enseignant(
-#             self.db,
-#             enseignant_id,
-#             annee_universitaire,
-#         )
-
-#         return {
-#             "enseignant_id": enseignant_id,
-#             "volume_horaire": volume_horaire,
-#             "volume_consomme": volume_consomme,
-#             "volume_restant": volume_horaire - volume_consomme,
-#             "nb_surveillances": nb_surveillances,
-#         }
-
-#     def get_enseignants_disponibles_pour_planification(
-#         self,
-#         planif_id: int,
-#     ) -> list[EnseignantDisponible]:
-#         """
-#         Get all available enseignants for a planification (for conflict resolution).
-
-#         Applies only constraints 1 and 4 (no department filter).
-#         Returns all departments.
-#         """
-#         planif = self.db.query(Planification).filter(Planification.id == planif_id).first()
-#         if not planif:
-#             return []
-
-#         session = self.db.query(SessionModel).filter(
-#             SessionModel.id == planif.session_id,
-#         ).first()
-#         annee_univ = session.annee_universitaire if session else None
-
-#         # Récupérer tous les enseignants
-#         enseignants = self.db.query(Enseignant).all()
-#         disponibles = []
-
-#         for ens in enseignants:
-#             # Contrainte 1: Disponibilité
-#             if not self._check_disponibilite_temporelle(ens.id, planif):
-#                 continue
-
-#             # Contrainte 4: Non-simultanéité
-#             if self._check_conflit_simultaneite(ens.id, planif):
-#                 continue
-
-#             # Récupérer les infos de volume
-#             volume_info = self.get_volume_restant_enseignant(ens.id, annee_univ)
-
-#             disponibles.append(EnseignantDisponible(
-#                 enseignant_id=ens.id,
-#                 nom=ens.nom,
-#                 prenom=ens.prenom,
-#                 grade=ens.grade,
-#                 departement={
-#                     "id": ens.departement_id,
-#                     "nom": ens.departement.nom if ens.departement else "Unknown",
-#                     "code": ens.departement.code if ens.departement else "UNK",
-#                 },
-#                 volume_horaire=volume_info["volume_horaire"],
-#                 volume_consomme=volume_info["volume_consomme"],
-#                 volume_restant=volume_info["volume_restant"],
-#                 nb_surveillances=volume_info["nb_surveillances"],
-#             ))
-
-#         # Trier par volume_restant DESC
-#         disponibles.sort(key=lambda x: x.volume_restant, reverse=True)
-#         return disponibles
-
-
-"""Business logic for surveillance module."""
+"""
+services/surv_service.py
+"""
 
 from typing import Optional
-
 from sqlalchemy.orm import Session as SQLSession
 
 from app.algorithms.surv_auto import AutomaticAffectationAlgorithm
@@ -468,10 +21,10 @@ from app.crud.crud_surv import (
     count_surveillances_for_enseignant,
 )
 from app.models.surveillance import Surveillance
-from app.models.planification_examen import PlanificationExamen
+from app.models.planification import Planification
 from app.models.enseignant import Enseignant, ChargeHoraire
 from app.models.disponibilite import DisponibiliteEnseignant
-from app.models.salle_session import Session, Creneau  # ✅ Correction: Ajout de Creneau
+from app.models.salle_session import Session, Creneau
 from app.schemas.surveillance_schema import (
     SurveillanceCreate,
     SurveillanceUpdate,
@@ -482,422 +35,430 @@ from app.schemas.surveillance_schema import (
 
 
 class SurvService:
-    """Business logic layer for surveillance module."""
 
     def __init__(self, db: SQLSession):
-        self.db = db
+        self.db        = db
         self.algorithm = AutomaticAffectationAlgorithm(db)
 
-    # ========================================================================
-    # CONSULTATION & LISTING
-    # ========================================================================
+    # ── Listing ──────────────────────────────────────────────────────────────
 
     def get_all_surveillances(
         self,
         *,
-        planification_id: Optional[int] = None,
-        enseignant_id: Optional[int] = None,
-        session_id: Optional[int] = None,
-        est_externe: Optional[bool] = None,
-        skip: int = 0,
+        planification_id: int | None  = None,
+        enseignant_id:    int | None  = None,
+        session_id:       int | None  = None,
+        groupe_id:        int | None  = None,
+        salle_id:         int | None  = None,
+        est_externe:      bool | None = None,
+        statut:           str | None  = None,
+        skip:  int = 0,
         limit: int = 50,
-    ) -> list[Surveillance]:
-        """Get all surveillances with optional filters."""
+    ):
         return list_surveillances(
             self.db,
             planification_id=planification_id,
             enseignant_id=enseignant_id,
             session_id=session_id,
+            groupe_id=groupe_id,
+            salle_id=salle_id,
             est_externe=est_externe,
+            statut=statut,
             skip=skip,
             limit=limit,
         )
 
-    def get_surveillance_by_id(self, surveillance_id: int) -> Optional[Surveillance]:
-        """Get a surveillance by ID."""
+    def get_surveillance_by_id(self, surveillance_id: int):
         return get_surveillance(self.db, surveillance_id)
 
-    def get_surveillances_for_planification(
-        self, planification_id: int
-    ) -> list[Surveillance]:
-        """Get all surveillances for a planification."""
+    def get_surveillances_for_planification(self, planification_id: int):
         return get_surveillances_for_planification(self.db, planification_id)
 
     def get_surveillances_for_enseignant(
-        self,
-        enseignant_id: int,
-        annee_universitaire: Optional[str] = None,
-    ) -> list[Surveillance]:
-        """Get all surveillances for an enseignant."""
+        self, enseignant_id: int, annee_universitaire: str | None = None
+    ):
         return get_surveillances_for_enseignant(
-            self.db,
-            enseignant_id,
-            annee_universitaire,
+            self.db, enseignant_id, annee_universitaire
         )
 
-    # ========================================================================
-    # CREATION & MODIFICATION
-    # ========================================================================
+    # ── CRUD basique ─────────────────────────────────────────────────────────
 
-    def create_surveillance(self, payload: SurveillanceCreate) -> Surveillance:
-        """Create a new surveillance."""
+    def create_surveillance(self, payload: SurveillanceCreate):
         return create_surveillance(self.db, payload)
 
-    def update_surveillance(
-        self,
-        surveillance_id: int,
-        payload: SurveillanceUpdate,
-    ) -> Optional[Surveillance]:
-        """Update a surveillance."""
-        surveillance = get_surveillance(self.db, surveillance_id)
-        if not surveillance:
-            return None
-        return update_surveillance(self.db, surveillance, payload)
+    def update_surveillance(self, surveillance_id: int, payload: SurveillanceUpdate):
+        s = get_surveillance(self.db, surveillance_id)
+        return update_surveillance(self.db, s, payload) if s else None
 
     def delete_surveillance(self, surveillance_id: int) -> bool:
-        """Delete a surveillance (physical deletion)."""
         return delete_surveillance_by_id(self.db, surveillance_id)
 
     def replace_surveillance(
-        self,
-        surveillance_id: int,
-        new_enseignant_id: int,
-        motif: str,
-    ) -> Optional[tuple]:
-        """Replace an enseignant on a surveillance."""
+        self, surveillance_id: int, new_enseignant_id: int, motif: str
+    ):
         old = get_surveillance(self.db, surveillance_id)
         if not old:
-            return None
+            raise ValueError("Surveillance non trouvée")
         return replace_surveillance(self.db, old, new_enseignant_id, motif)
 
-    # ========================================================================
-    # AUTOMATIC AFFECTATION
-    # ========================================================================
+    # ── Affectation automatique ───────────────────────────────────────────────
 
-    def affecter_session_automatique(self, session_id: int) -> tuple:
-        """
-        Lancer l'affectation automatique pour toutes les planifications VALIDEE
-        d'une session.
-
-        Returns:
-            - results: List of PlanificationAffectationResult
-            - message: Status message
-        """
-        return self.algorithm.affecter_session(session_id)
-
-    # ========================================================================
-    # MANUAL AFFECTATION
-    # ========================================================================
-
-    def affecter_planification_manuellement(
+    def affecter_session_automatique(
         self,
-        request: ManualAssignmentRequest,
-    ) -> dict:
+        session_id:   int,
+        section_nom:  Optional[str] = None,
+        periode:      Optional[str] = None,
+        type_epreuve: Optional[str] = None,
+    ):
         """
-        Handle manual affectation for a single conflicted planification.
+        Lance l'algorithme v3 avec filtres optionnels.
 
-        Validates constraints 1 and 4 only.
+        Args:
+            session_id:   ID de la session (obligatoire)
+            section_nom:  Ex: "IGL3" ou "INF/IOT"
+            periode:      Ex: "2025/2026-S1" ou "2025/2026-S2"
+            type_epreuve: "DS" ou "EXAMEN_FINAL"
         """
-        # Récupérer la planification
-        planif = self.db.query(PlanificationExamen).filter(
-            PlanificationExamen.id == request.planification_id,
-            PlanificationExamen.session_id == request.session_id,
+        return self.algorithm.affecter_session(
+            session_id=session_id,
+            section_nom=section_nom,
+            periode=periode,
+            type_epreuve=type_epreuve,
+        )
+
+    # ── Affectation manuelle — planif unique ──────────────────────────────────
+
+    def affecter_planification_manuellement(self, request: ManualAssignmentRequest):
+        from app.crud.crud_surv import _enrich_surveillance
+
+        planif = self.db.query(Planification).filter(
+            Planification.id         == request.planification_id,
+            Planification.session_id == request.session_id,
         ).first()
-
         if not planif:
-            raise ValueError(f"Planification {request.planification_id} non trouvée dans la session")
+            raise ValueError(
+                f"Planification {request.planification_id} non trouvée "
+                f"dans la session {request.session_id}"
+            )
 
-        # Valider les enseignants et créer les surveillances
-        surveillances_creees = []
+        crees   = []
         erreurs = []
 
         for ens_id in request.enseignant_ids:
-            # Vérifier contrainte 1 (disponibilité)
-            if not self._check_disponibilite_temporelle(ens_id, planif):
-                erreurs.append({
-                    "enseignant_id": ens_id,
-                    "raison": "INDISPONIBLE",
-                })
+            # ── Seule contrainte active : C4 non-simultanéité ──
+            if self._check_simultaneite(ens_id, planif):
+                erreurs.append({"enseignant_id": ens_id, "raison": "DEJA_AFFECTE"})
                 continue
 
-            # Vérifier contrainte 4 (non-simultanéité)
-            if self._check_conflit_simultaneite(ens_id, planif):
-                erreurs.append({
-                    "enseignant_id": ens_id,
-                    "raison": "DEJA_AFFECTE",
-                })
-                continue
-
-            # Déterminer si externe
-            ens = self.db.query(Enseignant).filter(Enseignant.id == ens_id).first()
+            ens         = self.db.query(Enseignant).filter(Enseignant.id == ens_id).first()
             est_externe = ens.departement_id != planif.departement_id
-
-            motif = request.motifs_externes.get(ens_id) if est_externe else None
-
-            # ✅ Vérification: motif_externe obligatoire si externe
-            if est_externe and not motif:
-                raise ValueError(f"Enseignant externe {ens_id} nécessite un motif_externe")
+            motif       = request.motifs_externes.get(ens_id) if est_externe else None
 
             payload = SurveillanceCreate(
                 planification_id=request.planification_id,
                 enseignant_id=ens_id,
+                groupe_id=request.groupe_id,
+                salle_id=request.salle_id,
                 charge=float(planif.duree / 60),
                 mode_affectation="MANUELLE",
                 est_externe=est_externe,
                 motif_externe=motif,
             )
-
-            surv = create_surveillance(self.db, payload)
-            surveillances_creees.append(surv)
+            crees.append(create_surveillance(self.db, payload))
 
         if erreurs:
-            # Tout ou rien: si une erreur, on delete tout ce qui a été créé
-            for surv in surveillances_creees:
-                delete_surveillance(self.db, surv)
+            for s in crees:
+                delete_surveillance(self.db, s)
             raise ValueError(f"Validation échouée: {erreurs}")
 
+        # ── Récupérer annee_univ depuis la session ──
+        sess       = planif.session
+        annee_univ = sess.annee_universitaire if sess else None
+
+        # ── Enrichir chaque surveillance créée ──
+        surveillances_detail = [
+            _enrich_surveillance(self.db, s, annee_univ)
+            for s in crees
+        ]
+
+        # ── Vérifier si le nombre de surveillants est suffisant ──
+        nb_inseres  = len(crees)
+        nb_requis   = planif.nb_surveillants_requis
+        manquants   = nb_requis - nb_inseres
+
+        if manquants > 0:
+            statut = "INCOMPLET"
+        else:
+            statut = "CONFLIT_RESOLU"
+
         return {
-            "planification_id": request.planification_id,
-            "statut": "CONFLIT_RESOLU",
-            "surveillants_inseres": len(surveillances_creees),
+            "planification_id":     request.planification_id,
+            "statut":               statut,
+            "surveillants_requis":  nb_requis,
+            "surveillants_inseres": nb_inseres,
+            "manquants":            manquants,
+            "surveillances":        surveillances_detail,
         }
 
-    def affecter_session_manuellement(
-        self,
-        request: ManualAssignmentBatchRequest,
-    ) -> dict:
-        """
-        Handle full manual affectation for an entire session.
+    # ── Affectation manuelle — batch ─────────────────────────────────────────
 
-        Validates constraints 1 and 4 only.
-        One transaction for all planifications.
-        """
-        # Récupérer la session
+    def affecter_session_manuellement(self, request: ManualAssignmentBatchRequest):
+        from app.crud.crud_surv import _enrich_surveillance
+
         session = self.db.query(Session).filter(
-            Session.id == request.session_id,
+            Session.id == request.session_id
         ).first()
-
         if not session:
             raise ValueError(f"Session {request.session_id} non trouvée")
 
-        # Valider toutes les affectations d'abord
-        all_valid_payloads = []
-        erreurs_globales = []
-        planifications_non_affectees = []
+        crees      = []
+        erreurs    = []
+        incomplets = []
 
-        for planif_id, ens_ids in request.affectations.items():
-            # Récupérer la planification
-            planif = self.db.query(PlanificationExamen).filter(
-                PlanificationExamen.id == planif_id,
-                PlanificationExamen.session_id == request.session_id,
+        for item in request.affectations:
+            planif = self.db.query(Planification).filter(
+                Planification.id         == item.planification_id,
+                Planification.session_id == request.session_id,
             ).first()
-
             if not planif:
-                planifications_non_affectees.append(planif_id)
-                erreurs_globales.append({
-                    "planification_id": planif_id,
-                    "erreur": "Non trouvée",
-                })
+                incomplets.append(item.planification_id)
+                erreurs.append({"planification_id": item.planification_id, "erreur": "Non trouvée"})
                 continue
 
-            # Vérifier si la planification a assez de surveillants
-            if len(ens_ids) < planif.nb_surveillants_requis:
-                planifications_non_affectees.append(planif_id)
+            if len(item.enseignant_ids) < planif.nb_surveillants_requis:
+                incomplets.append(item.planification_id)
 
-            for ens_id in ens_ids:
-                # Vérifier contrainte 1
-                if not self._check_disponibilite_temporelle(ens_id, planif):
-                    erreurs_globales.append({
-                        "planification_id": planif_id,
-                        "enseignant_id": ens_id,
-                        "raison": "INDISPONIBLE",
+            for ens_id in item.enseignant_ids:
+                # ── Seule contrainte active : C4 non-simultanéité ──
+                if self._check_simultaneite(ens_id, planif):
+                    erreurs.append({
+                        "planification_id": item.planification_id,
+                        "enseignant_id":    ens_id,
+                        "raison":           "DEJA_AFFECTE",
                     })
                     continue
 
-                # Vérifier contrainte 4
-                if self._check_conflit_simultaneite(ens_id, planif):
-                    erreurs_globales.append({
-                        "planification_id": planif_id,
-                        "enseignant_id": ens_id,
-                        "raison": "DEJA_AFFECTE",
-                    })
-                    continue
-
-                # Déterminer si externe
-                ens = self.db.query(Enseignant).filter(Enseignant.id == ens_id).first()
+                ens         = self.db.query(Enseignant).filter(Enseignant.id == ens_id).first()
                 est_externe = ens.departement_id != planif.departement_id
-                motif = request.motifs_externes.get(ens_id) if est_externe else None
+                motif       = request.motifs_externes.get(ens_id) if est_externe else None
 
-                # ✅ Vérification: motif_externe obligatoire si externe
-                if est_externe and not motif:
-                    raise ValueError(f"Enseignant externe {ens_id} nécessite un motif_externe")
-
-                payload = SurveillanceCreate(
-                    planification_id=planif_id,
+                crees.append(SurveillanceCreate(
+                    planification_id=item.planification_id,
                     enseignant_id=ens_id,
+                    groupe_id=item.groupe_id,
+                    salle_id=item.salle_id,
                     charge=float(planif.duree / 60),
                     mode_affectation="MANUELLE",
                     est_externe=est_externe,
                     motif_externe=motif,
-                )
+                ))
 
-                all_valid_payloads.append(payload)
-
-        # ✅ Avertissement si des planifications sont incomplètes
-        if planifications_non_affectees:
+        if incomplets:
             return {
                 "session_id": request.session_id,
-                "statut": "AVERTISSEMENT",
-                "message": "Certaines planifications n'ont pas assez de surveillants",
-                "planifications_non_affectees": planifications_non_affectees,
-                "avertissement": "Voulez-vous continuer ?",
+                "statut":     "AVERTISSEMENT",
+                "message":    "Certaines planifications sont incomplètes",
+                "planifications_non_affectees": incomplets,
             }
+        if erreurs:
+            raise ValueError(f"Validation échouée: {erreurs}")
 
-        if erreurs_globales:
-            raise ValueError(f"Validation échouée: {erreurs_globales}")
+        surveillances_inserees = create_surveillances_batch(self.db, crees)
 
-        # Transaction unique pour toutes les surveillances
-        surveillances = create_surveillances_batch(self.db, all_valid_payloads)
+        # ── Enrichir chaque surveillance créée ──
+        annee_univ = session.annee_universitaire
+        surveillances_detail = [
+            _enrich_surveillance(self.db, s, annee_univ)
+            for s in surveillances_inserees
+        ]
 
         return {
-            "session_id": request.session_id,
-            "statut": "SUCCES",
-            "total_surveillances_inserees": len(surveillances),
+            "session_id":                   request.session_id,
+            "statut":                       "SUCCES",
+            "total_surveillances_inserees": len(surveillances_inserees),
+            "surveillances":                surveillances_detail,
         }
 
-    # ========================================================================
-    # HELPER METHODS FOR CONSTRAINT CHECKING
-    # ========================================================================
+    # ── Helpers contraintes ──────────────────────────────────────────────────
 
-    def _check_disponibilite_temporelle(
-        self,
-        enseignant_id: int,
-        planif: PlanificationExamen,  # ✅ Correction: PlanificationExamen au lieu de Planification
-    ) -> bool:
-        """Vérifier disponibilité temporelle (Contrainte 1)."""
-        creneau = self.db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
+    def _check_disponibilite(self, enseignant_id: int, planif: Planification) -> bool:
+        creneau = planif.creneau
+        if not creneau:
+            creneau = self.db.query(Creneau).filter(
+                Creneau.id == planif.creneau_id
+            ).first()
         if not creneau:
             return False
 
-        # Vérifier indisponibilités
-        indisponibilites = self.db.query(DisponibiliteEnseignant).filter(
+        indispos = self.db.query(DisponibiliteEnseignant).filter(
             DisponibiliteEnseignant.enseignant_id == enseignant_id,
-            DisponibiliteEnseignant.date == creneau.date,
-            DisponibiliteEnseignant.type_dispo.in_(["INDISPONIBLE", "COURS_PREVU", "MISSION", "CONGE"]),
+            DisponibiliteEnseignant.date          == creneau.date,
+            DisponibiliteEnseignant.type_dispo.in_(
+                ["INDISPONIBLE", "COURS_PREVU", "MISSION", "CONGE"]
+            ),
         ).all()
 
-        for indispo in indisponibilites:
-            if indispo.heure_debut < creneau.heure_fin and indispo.heure_fin > creneau.heure_debut:
+        for i in indispos:
+            if i.heure_debut < creneau.heure_fin and i.heure_fin > creneau.heure_debut:
                 return False
-
         return True
 
-    def _check_conflit_simultaneite(
-        self,
-        enseignant_id: int,
-        planif: PlanificationExamen,  # ✅ Correction: PlanificationExamen au lieu de Planification
-    ) -> bool:
-        """Vérifier non-simultanéité (Contrainte 4)."""
-        creneau = self.db.query(Creneau).filter(Creneau.id == planif.creneau_id).first()
+    def _check_simultaneite(self, enseignant_id: int, planif: Planification) -> bool:
+        creneau = planif.creneau
+        if not creneau:
+            creneau = self.db.query(Creneau).filter(
+                Creneau.id == planif.creneau_id
+            ).first()
         if not creneau:
             return False
 
-        # Chercher conflits
-        conflits = self.db.query(Surveillance).join(PlanificationExamen).join(Creneau).filter(
-            Surveillance.enseignant_id == enseignant_id,
-            Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
-            Creneau.date == creneau.date,
-            Creneau.heure_debut == creneau.heure_debut,
-        ).all()
+        return bool(
+            self.db.query(Surveillance)
+            .select_from(Surveillance)
+            .join(Planification, Surveillance.planification_id == Planification.id)
+            .join(Creneau,       Planification.creneau_id      == Creneau.id)
+            .filter(
+                Surveillance.enseignant_id == enseignant_id,
+                Surveillance.statut_surveillance.in_(["AFFECTE", "CONFIRME"]),
+                Creneau.date        == creneau.date,
+                Creneau.heure_debut == creneau.heure_debut,
+                Surveillance.planification_id != planif.id,
+            )
+            .first()
+        )
 
-        return len(conflits) > 0
-
-    # ========================================================================
-    # ANALYTICS & REPORTS
-    # ========================================================================
+    # ── Analytics ────────────────────────────────────────────────────────────
 
     def get_volume_restant_enseignant(
-        self,
-        enseignant_id: int,
-        annee_universitaire: str,
+        self, enseignant_id: int, annee_universitaire: str
     ) -> dict:
-        """Get volume information for an enseignant."""
-        charge_horaire = self.db.query(ChargeHoraire).filter(
+        charge = self.db.query(ChargeHoraire).filter(
             ChargeHoraire.enseignant_id == enseignant_id,
-            ChargeHoraire.annee_univ == annee_universitaire,
+            ChargeHoraire.annee_univ    == annee_universitaire,
         ).first()
-
-        volume_horaire = charge_horaire.volume_horaire if charge_horaire else 0.0
+        volume_horaire  = float(charge.volume_horaire) if charge else 0.0
         volume_consomme = get_enseignant_charge_for_year(
-            self.db,
-            enseignant_id,
-            annee_universitaire,
+            self.db, enseignant_id, annee_universitaire
         )
-        nb_surveillances = count_surveillances_for_enseignant(
-            self.db,
-            enseignant_id,
-            annee_universitaire,
+        nb = count_surveillances_for_enseignant(
+            self.db, enseignant_id, annee_universitaire
         )
-
         return {
-            "enseignant_id": enseignant_id,
-            "volume_horaire": volume_horaire,
-            "volume_consomme": volume_consomme,
-            "volume_restant": volume_horaire - volume_consomme,
-            "nb_surveillances": nb_surveillances,
+            "enseignant_id":    enseignant_id,
+            "volume_horaire":   volume_horaire,
+            "volume_consomme":  volume_consomme,
+            "volume_restant":   round(volume_horaire - volume_consomme, 2),
+            "nb_surveillances": nb,
         }
 
     def get_enseignants_disponibles_pour_planification(
-        self,
-        planif_id: int,
-    ) -> list[EnseignantDisponible]:
-        """
-        Get all available enseignants for a planification (for conflict resolution).
+    self, planif_id: int
+    ) -> dict:
+        from app.models.disponibilite import DisponibiliteEnseignant
+        from app.schemas.surveillance_schema import (
+            EnseignantDisponibleV2,
+            AvertissementIndisponibilite,
+            DepartementDisponiblesOut,
+            EnseignantsDisponiblesResponse,
+        )
 
-        Applies only constraints 1 and 4 (no department filter).
-        Returns all departments.
-        """
-        planif = self.db.query(PlanificationExamen).filter(PlanificationExamen.id == planif_id).first()
-        if not planif:
-            return []
-
-        session = self.db.query(Session).filter(
-            Session.id == planif.session_id,
+        planif = self.db.query(Planification).filter(
+            Planification.id == planif_id
         ).first()
-        annee_univ = session.annee_universitaire if session else None
+        if not planif:
+            return {}
 
-        # Récupérer tous les enseignants
+        session    = planif.session
+        annee_univ = session.annee_universitaire if session else ""
+        creneau    = planif.creneau
+        if not creneau:
+            creneau = self.db.query(Creneau).filter(
+                Creneau.id == planif.creneau_id
+            ).first()
+
+        date_planif = creneau.date if creneau else None
+
         enseignants = self.db.query(Enseignant).all()
-        disponibles = []
+
+        # ── Grouper par département
+        dept_map: dict[int | None, list[EnseignantDisponibleV2]] = {}
 
         for ens in enseignants:
-            # Contrainte 1: Disponibilité
-            if not self._check_disponibilite_temporelle(ens.id, planif):
+            # ── Contrainte stricte : non-simultanéité
+            if self._check_simultaneite(ens.id, planif):
                 continue
 
-            # Contrainte 4: Non-simultanéité
-            if self._check_conflit_simultaneite(ens.id, planif):
-                continue
+            # ── Contrainte souple : indisponibilité le même jour
+            avertissements = []
+            if date_planif:
+                indispos = self.db.query(DisponibiliteEnseignant).filter(
+                    DisponibiliteEnseignant.enseignant_id == ens.id,
+                    DisponibiliteEnseignant.date          == date_planif,
+                ).all()
+                for i in indispos:
+                    avertissements.append(AvertissementIndisponibilite(
+                        date=str(i.date),
+                        heure_debut=str(i.heure_debut),
+                        heure_fin=str(i.heure_fin),
+                        type_dispo=i.type_dispo,
+                        motif=i.motif,
+                    ))
 
-            # Récupérer les infos de volume
-            volume_info = self.get_volume_restant_enseignant(ens.id, annee_univ)
+            vol  = self.get_volume_restant_enseignant(ens.id, annee_univ)
+            dept = ens.departement
+            dept_id = dept.id if dept else None
 
-            disponibles.append(EnseignantDisponible(
+            ens_out = EnseignantDisponibleV2(
                 enseignant_id=ens.id,
                 nom=ens.nom,
                 prenom=ens.prenom,
                 grade=ens.grade,
-                departement={
-                    "id": ens.departement_id,
-                    "nom": ens.departement.nom if ens.departement else "Unknown",
-                    "code": ens.departement.code if ens.departement else "UNK",
-                },
-                volume_horaire=volume_info["volume_horaire"],
-                volume_consomme=volume_info["volume_consomme"],
-                volume_restant=volume_info["volume_restant"],
-                nb_surveillances=volume_info["nb_surveillances"],
-            ))
+                email=ens.email,
+                telephone=ens.telephone,
+                volume_horaire=vol["volume_horaire"],
+                volume_consomme=vol["volume_consomme"],
+                volume_restant=vol["volume_restant"],
+                nb_surveillances=vol["nb_surveillances"],
+                a_avertissement=len(avertissements) > 0,
+                avertissements=avertissements,
+            )
 
-        # Trier par volume_restant DESC
-        disponibles.sort(key=lambda x: x.volume_restant, reverse=True)
-        return disponibles
+            if dept_id not in dept_map:
+                dept_map[dept_id] = {
+                    "info": dept,
+                    "enseignants": [],
+                }
+            dept_map[dept_id]["enseignants"].append(ens_out)
+
+        # ── Construire la réponse par département
+        departements = []
+        total_disponibles = 0
+        total_avec_avertissement = 0
+
+        for dept_id, data in dept_map.items():
+            dept     = data["info"]
+            ens_list = sorted(
+                data["enseignants"],
+                key=lambda x: x.volume_restant,
+                reverse=True,
+            )
+            departements.append(DepartementDisponiblesOut(
+                departement_id=dept.id     if dept else None,
+                departement_nom=dept.nom   if dept else None,
+                departement_code=dept.code if dept else None,
+                enseignants=ens_list,
+                total=len(ens_list),
+            ))
+            total_disponibles        += len(ens_list)
+            total_avec_avertissement += sum(1 for e in ens_list if e.a_avertissement)
+
+        # ── Trier les départements par nom
+        departements.sort(key=lambda x: x.departement_nom or "")
+
+        return EnseignantsDisponiblesResponse(
+            planification_id=planif_id,
+            date_planification=str(date_planif) if date_planif else "",
+            total_disponibles=total_disponibles,
+            total_avec_avertissement=total_avec_avertissement,
+            departements=departements,
+        )

@@ -31,7 +31,7 @@ class Niveau(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     libelle: Mapped[str] = mapped_column(String(50), nullable=False)
-    annee: Mapped[int] = mapped_column(Integer, nullable=False)
+    # ❌ SUPPRIMÉ : annee (n'existe plus dans votre schéma)
     type_formation: Mapped[str] = mapped_column(String(50), nullable=False)
     departement_id: Mapped[int] = mapped_column(
         Integer,
@@ -54,7 +54,7 @@ class Section(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     nom: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
-    nb_etudiants: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # ❌ SUPPRIMÉ : nb_etudiants (n'existe plus dans votre schéma)
     niveau_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("niveau.id", ondelete="CASCADE"),
@@ -84,6 +84,10 @@ class Groupe(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     numero: Mapped[int] = mapped_column(Integer, nullable=False)
     effectif: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # ✅ AJOUTÉ : nb_etudiants (nouvelle colonne dans votre schéma)
+    nb_etudiants: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # ✅ AJOUTÉ : annee (nouvelle colonne dans votre schéma)
+    annee: Mapped[str] = mapped_column(String(10), nullable=False)
     section_id: Mapped[int] = mapped_column(
         Integer,
         ForeignKey("section.id", ondelete="CASCADE"),

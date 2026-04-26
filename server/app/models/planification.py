@@ -1,55 +1,51 @@
-"""Planification ORM models used by the P1 exam-planning module."""
+"""Planification & PlanifSalle ORM models — alignés sur le script SQL."""
 
-from datetime import date, time
+from datetime import datetime
 
-from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Time, UniqueConstraint, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
 
 class Planification(Base):
-    __tablename__ = "planifications"
+    __tablename__ = "planification_examen"
     __table_args__ = (
         UniqueConstraint(
-            "section_matiere_id",
-            "session_id",
-            "type_epreuve",
-            name="uq_planif_section_matiere_session_type",
+            "session_id", "section_matiere_id", "creneau_id", "type_epreuve",
+            name="uq_planif_session_section_creneau_type",
         ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    session_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    section_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    section_matiere_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-
-    matiere: Mapped[str] = mapped_column(String(120), nullable=False)
-    type_epreuve: Mapped[str] = mapped_column(String(24), nullable=False, default="EXAMEN_FINAL")
-
-    date_examen: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    heure_debut: Mapped[time] = mapped_column(Time, nullable=False)
-    heure_fin: Mapped[time] = mapped_column(Time, nullable=False)
-
-    session_date_debut: Mapped[date] = mapped_column(Date, nullable=False)
-    session_date_fin: Mapped[date] = mapped_column(Date, nullable=False)
-    session_statut: Mapped[str] = mapped_column(String(24), nullable=False, default="BROUILLON")
-
+    session_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("session.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    departement_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("departement.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    section_matiere_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("section_matiere.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    creneau_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("creneau.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    type_epreuve: Mapped[str] = mapped_column(String(50), nullable=False)  # EXAMEN_FINAL, DS
+    # ✅ CHAMP MANQUANT dans l'ancien model — présent dans le SQL
+    semestre: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 ou 2
     duree: Mapped[int] = mapped_column(Integer, nullable=False, default=120)
-    coefficient: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
-    section_nb_etudiants: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    mode_affectation: Mapped[str] = mapped_column(String(50), nullable=False, default="AUTOMATIQUE")
+    statut: Mapped[str] = mapped_column(String(50), nullable=False, default="BROUILLON")
+    nb_groupes: Mapped[int] = mapped_column(Integer, default=1)
+    nb_surveillants_requis: Mapped[int] = mapped_column(Integer, default=2)
 
-    mode_affectation: Mapped[str] = mapped_column(String(24), nullable=False, default="AUTO")
-    statut: Mapped[str] = mapped_column(String(24), nullable=False, default="BROUILLON")
-    nb_groupes: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    nb_surveillants_requis: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-
-    created_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+    # Relations bidirectionnelles
+    session: Mapped["Session"] = relationship("Session", back_populates="planifications")
+    departement: Mapped["Departement"] = relationship("Departement", lazy="selectin")
+    section_matiere: Mapped["SectionMatiere"] = relationship(
+        "SectionMatiere", back_populates="planifications", lazy="selectin"
     )
-    updated_at: Mapped[DateTime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
-    )
+    creneau: Mapped["Creneau"] = relationship("Creneau", back_populates="planifications", lazy="selectin")
 
     salles_affectees: Mapped[list["PlanifSalle"]] = relationship(
         "PlanifSalle",
@@ -57,36 +53,32 @@ class Planification(Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    surveillances: Mapped[list["Surveillance"]] = relationship("Surveillance", lazy="selectin")
-
-    @property
-    def duree_effective(self) -> int:
-        return self.duree
+    surveillances: Mapped[list["Surveillance"]] = relationship(
+        "Surveillance",
+        back_populates="planification",
+        lazy="selectin",
+    )
 
 
 class PlanifSalle(Base):
     __tablename__ = "planif_salle"
-    __table_args__ = (
-        UniqueConstraint("planification_id", "salle_id", name="uq_planif_salle_planif_salle"),
-        UniqueConstraint("planification_id", "groupe_id", name="uq_planif_salle_planif_groupe"),
-        UniqueConstraint("salle_id", "creneau_date", "heure_debut", name="uq_salle_creneau_unique"),
-    )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    # Clé primaire composite
     planification_id: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey("planifications.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
+        Integer, ForeignKey("planification_examen.id", ondelete="CASCADE"),
+        primary_key=True, nullable=False, index=True,
     )
-    salle_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
-    salle_capacite: Mapped[int] = mapped_column(Integer, nullable=False)
-    salle_batiment: Mapped[str] = mapped_column(String(64), nullable=True)
+    salle_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("salle.id", ondelete="CASCADE"),
+        primary_key=True, nullable=False, index=True,
+    )
+    groupe_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("groupe.id", ondelete="SET NULL"), nullable=True
+    )
 
-    groupe_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    groupe_effectif: Mapped[int] = mapped_column(Integer, nullable=False)
-
-    creneau_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
-    heure_debut: Mapped[time] = mapped_column(Time, nullable=False)
-
-    planification: Mapped[Planification] = relationship("Planification", back_populates="salles_affectees")
+    # Relations
+    planification: Mapped["Planification"] = relationship(
+        "Planification", back_populates="salles_affectees"
+    )
+    salle: Mapped["Salle"] = relationship("Salle", back_populates="planif_salles")
+    groupe: Mapped["Groupe | None"] = relationship("Groupe")

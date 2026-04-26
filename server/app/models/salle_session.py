@@ -1,4 +1,4 @@
-"""Salle, Creneau, Session ORM models."""
+"""Salle, Creneau, Session ORM models — alignés sur le script SQL."""
 
 from datetime import date, time
 
@@ -13,9 +13,17 @@ class Salle(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     code: Mapped[str] = mapped_column(String(30), nullable=False, unique=True, index=True)
-    designation: Mapped[str] = mapped_column(String(100), nullable=True)
+    designation: Mapped[str | None] = mapped_column(String(100), nullable=True)
     capacite: Mapped[int] = mapped_column(Integer, nullable=False)
-    batiment: Mapped[str] = mapped_column(String(50), nullable=True)
+    batiment: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Relations
+    planif_salles: Mapped[list["PlanifSalle"]] = relationship(
+        "PlanifSalle", back_populates="salle", lazy="selectin"
+    )
+    surveillances: Mapped[list["Surveillance"]] = relationship(
+        "Surveillance", back_populates="salle", lazy="selectin"
+    )
 
 
 class Creneau(Base):
@@ -26,15 +34,25 @@ class Creneau(Base):
     date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
     heure_debut: Mapped[time] = mapped_column(Time, nullable=False)
     heure_fin: Mapped[time] = mapped_column(Time, nullable=False)
-    libelle: Mapped[str] = mapped_column(String(50), nullable=True)
+    libelle: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    # Relations
+    planifications: Mapped[list["Planification"]] = relationship(
+        "Planification", back_populates="creneau", lazy="selectin"
+    )
 
 
 class Session(Base):
     __tablename__ = "session"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    type_session: Mapped[str] = mapped_column(String(50), nullable=False)  # PRINCIPALE, RATTRAPAGE
+    type_session: Mapped[str] = mapped_column(String(50), nullable=False)   # PRINCIPALE, RATTRAPAGE
     annee_universitaire: Mapped[str] = mapped_column(String(10), nullable=False)
     date_debut: Mapped[date] = mapped_column(Date, nullable=False)
     date_fin: Mapped[date] = mapped_column(Date, nullable=False)
-    statut: Mapped[str] = mapped_column(String(24), nullable=False, default="BROUILLON")  # BROUILLON, VALIDEE, PUBLIEE
+    statut: Mapped[str] = mapped_column(String(24), nullable=False, default="BROUILLON")
+
+    # Relations
+    planifications: Mapped[list["Planification"]] = relationship(
+        "Planification", back_populates="session", lazy="selectin"
+    )
