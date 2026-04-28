@@ -60,6 +60,10 @@ from app.schemas.surveillance_schema import (
     DisponibiliteItem,
     StatistiquesResponse,
 )
+from app.schemas.disponibilite_schema import (
+    DisponibiliteEnseignantCreate,
+    DisponibiliteEnseignantOut,
+)
 
 router = APIRouter(prefix="/surveillances", tags=["Surveillance"])
 
@@ -1223,3 +1227,43 @@ def get_enseignant_disponibilites(enseignant_id: int, date_debut: str = Query(..
         raise HTTPException(status_code=400, detail="Format de date invalide (YYYY-MM-DD)")
     dispos = db.query(DisponibiliteEnseignant).filter(DisponibiliteEnseignant.enseignant_id == enseignant_id, DisponibiliteEnseignant.date >= start, DisponibiliteEnseignant.date <= end).all()
     return GetDisponibilitesResponse(enseignant_id=enseignant_id, date_debut=date_debut, date_fin=date_fin, disponibilites=[DisponibiliteItem(date=d.date.isoformat(), heure_debut=str(d.heure_debut), heure_fin=str(d.heure_fin), type=d.type_dispo, motif=d.motif) for d in dispos])
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CRÉER UNE DISPONIBILITÉ
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/disponibilites", response_model=DisponibiliteEnseignantOut)
+def create_disponibilite(payload: DisponibiliteEnseignantCreate, db: Session = Depends(get_db)):
+    """
+    Crée une indisponibilité (ou disponibilité) pour un enseignant.
+
+    BODY :
+      - enseignant_id (int)
+      - date (date)
+      - heure_debut (time)
+      - heure_fin (time)
+      - type_dispo (str)
+      - motif (str, optionnel)
+      - confirme (bool, default True)
+    """
+    from app.models.enseignant import Enseignant
+    from app.models.disponibilite import DisponibiliteEnseignant
+
+    enseignant = db.query(Enseignant).filter(Enseignant.id == payload.enseignant_id).first()
+    if not enseignant:
+        raise HTTPException(status_code=404, detail="Enseignant non trouvé")
+
+    record = DisponibiliteEnseignant(
+        enseignant_id=payload.enseignant_id,
+        date=payload.date,
+        heure_debut=payload.heure_debut,
+        heure_fin=payload.heure_fin,
+        type_dispo=payload.type_dispo,
+        motif=payload.motif,
+        confirme=payload.confirme,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record

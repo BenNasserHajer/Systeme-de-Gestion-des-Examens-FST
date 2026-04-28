@@ -3,10 +3,12 @@ import Link from "next/link";
 const links = [
   { href: "/planification", label: "Planification" },
   { href: "/surveillance", label: "Surveillance" },
+  { href: "/surveillance/affectation", label: "Affectation" },
+  { href: "/surveillance/charge", label: "Charges" },
   { href: "/salles", label: "Salles" },
   { href: "/matieres", label: "Matieres" },
   { href: "/enseignants", label: "Enseignants" },
-  { href: "/convocation", label: "Convocation" },
+  { href: "/convocation", label: "Convocation (Enseignant)" },
 ];
 
 export function Sidebar() {

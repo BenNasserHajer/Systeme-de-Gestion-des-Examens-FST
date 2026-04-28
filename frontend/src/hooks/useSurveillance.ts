@@ -2,47 +2,43 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  createSurveillance,
-  getSurveillances,
-  getTeacherCharges,
-} from "@/lib/api/surveillance";
-import type {
-  Surveillance,
-  SurveillanceCreatePayload,
-  TeacherCharge,
-} from "@/lib/types/surveillance";
+import { getAllSurveillants, getSessionSurveillances } from "@/lib/api/surveillance";
+import type { TeacherCharge } from "@/lib/types/surveillance";
 
-export function useSurveillance() {
-  const [items, setItems] = useState<Surveillance[]>([]);
+export function useSurveillance(sessionId: number | null) {
+  const [items, setItems] = useState<Array<Record<string, unknown>>>([]);
   const [charges, setCharges] = useState<TeacherCharge>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    if (!sessionId) {
+      setItems([]);
+      setCharges({});
+      setLoading(false);
+      setError("Session ID manquant");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       const [surveillancesData, chargesData] = await Promise.all([
-        getSurveillances(),
-        getTeacherCharges(),
+        getSessionSurveillances(sessionId),
+        getAllSurveillants({ session_id: sessionId }),
       ]);
-      setItems(surveillancesData);
-      setCharges(chargesData);
+      setItems(surveillancesData.data ?? []);
+      const chargeMap: TeacherCharge = {};
+      for (const item of chargesData.data) {
+        const key = `${item.prenom} ${item.nom}`.trim();
+        chargeMap[key] = item.volume_restant ?? 0;
+      }
+      setCharges(chargeMap);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  const createAssignment = useCallback(
-    async (payload: SurveillanceCreatePayload) => {
-      await createSurveillance(payload);
-      await refresh();
-    },
-    [refresh],
-  );
+  }, [sessionId]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -54,5 +50,5 @@ export function useSurveillance() {
     };
   }, [refresh]);
 
-  return { items, charges, loading, error, refresh, createAssignment };
+  return { items, charges, loading, error, refresh };
 }
