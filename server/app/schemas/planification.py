@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, time
 from enum import Enum
+from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -29,7 +30,8 @@ class StatutSession(str, Enum):
 
 
 class PlanifSalleBase(BaseModel):
-    salle_id: str = Field(min_length=1, max_length=80)
+    # ✅ FIX: salle_id est INTEGER en base, pas une string
+    salle_id: int = Field(ge=1)
     salle_capacite: int = Field(ge=1)
     salle_batiment: str | None = Field(default=None, max_length=64)
     groupe_id: int = Field(ge=1)
@@ -99,11 +101,25 @@ class PlanificationUpdate(BaseModel):
     salles: list[PlanifSalleAssign] | None = None
 
 
-class PlanificationOut(PlanificationBase):
+class PlanificationOut(BaseModel):
     id: int
+    session_id: int
+    section_id: int
+    section_matiere_id: int
+    matiere: str
+    type_epreuve: TypeEpreuve
+    mode_affectation: ModeAffectation
+    statut: StatutPlanification
+    date_examen: date
+    heure_debut: time
+    heure_fin: time
+    duree: int
+    coefficient: float
+    nb_groupes: int
+    nb_surveillants_requis: int
     created_at: datetime
     updated_at: datetime
-    salles: list[PlanifSalleOut] = Field(default_factory=list)
+    salles: list[PlanifSalleOut]
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -128,7 +144,8 @@ class GenerationCreneau(BaseModel):
 
 
 class GenerationSalle(BaseModel):
-    salle_id: str = Field(min_length=1, max_length=80)
+    # ✅ FIX: salle_id est INTEGER en base (référence salle.id), pas le code string
+    salle_id: int = Field(ge=1)
     capacite: int = Field(ge=1)
     batiment: str | None = Field(default=None, max_length=64)
 

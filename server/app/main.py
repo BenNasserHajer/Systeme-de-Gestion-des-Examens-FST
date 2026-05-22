@@ -34,13 +34,13 @@ app = FastAPI(
 )
 
 # -----------------------------
-# CORS
+# CORS - CORRIGÉ
 # -----------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],  # ex: http://localhost:3000
+    allow_origins=settings.cors_origins,  # ✅ Utiliser la liste complète
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
 )
 
@@ -48,7 +48,6 @@ app.add_middleware(
 # ROUTES
 # -----------------------------
 app.include_router(api_router, prefix="/api")
-
 
 # -----------------------------
 # STARTUP
@@ -102,3 +101,18 @@ async def health_check(db: Session = Depends(get_db)) -> dict[str, Any]:
         "database": "connected" if is_db_connected else "disconnected",
         "timestamp": datetime.now().isoformat(),
     }
+
+
+# -----------------------------
+# DEBUG: Lister toutes les routes
+# -----------------------------
+@app.get("/routes")
+async def list_routes() -> dict[str, Any]:
+    """Endpoint pour voir toutes les routes disponibles (debug)"""
+    routes = []
+    for route in app.routes:
+        routes.append({
+            "path": route.path,
+            "methods": list(route.methods) if hasattr(route, 'methods') else [],
+        })
+    return {"routes": routes}

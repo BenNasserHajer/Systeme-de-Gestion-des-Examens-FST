@@ -145,8 +145,27 @@ class PlanifService:
             self.db,
             known_section_matiere_ids=None,
         )
+
+        nb_crees = 0
         for payload in creates:
-            create_planification(self.db, payload)
+            try:
+                existing_planif = self.db.query(Planification).filter(
+                    Planification.session_id == payload.session_id,
+                    Planification.section_matiere_id == payload.section_matiere_id,
+                    Planification.type_epreuve == payload.type_epreuve
+                ).first()
+
+                if not existing_planif:
+                    create_planification(self.db, payload)
+                    nb_crees += 1
+                    print(f"✅ Planification créée: {payload.matiere}")
+                else:
+                    print(f"⚠️ Planification existe déjà: {payload.matiere}")
+            except Exception as e:
+                print(f"❌ Erreur sauvegarde {payload.matiere}: {e}")
+
+        self.db.commit()
+        result.nb_crees = nb_crees
         return result
 
     def affecter_salles_manuel(self, planif_id: int, salles: list[PlanifSalleAssign]) -> tuple[Planification, list[str]]:
@@ -176,8 +195,25 @@ class PlanifService:
         updated = replace_planif_salles(self.db, planif, salles)
         return updated, warnings
 
+    # ─── Emploi du temps ──────────────────────────────────────────────────────
+
     def get_emploi_du_temps(self, session_id: int) -> list[Planification]:
+        """Toutes les planifications d'une session."""
         return get_emploi_du_temps(self.db, session_id)
+
+    def get_emploi_du_temps_by_section(
+        self, session_id: int, section_id: int
+    ) -> list[Planification]:
+        """Planifications d'une session filtrées par section."""
+        return list_planifications(
+            self.db,
+            session_id=session_id,
+            section_id=section_id,
+            skip=0,
+            limit=10_000,
+        )
+
+    # ─── Statuts ──────────────────────────────────────────────────────────────
 
     def valider_planification(self, planif_id: int) -> Planification:
         planif = self.get_by_id(planif_id)

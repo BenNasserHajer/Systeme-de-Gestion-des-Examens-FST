@@ -1,7 +1,7 @@
 """Planification ORM models used by the P1 exam-planning module."""
 
 from datetime import date, time
-
+from app.models.session import Session as SessionModel
 from sqlalchemy import Date, DateTime, Float, ForeignKey, Integer, String, Time, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -90,3 +90,4 @@ class PlanifSalle(Base):
     heure_debut: Mapped[time] = mapped_column(Time, nullable=False)
 
     planification: Mapped[Planification] = relationship("Planification", back_populates="salles_affectees")
+    
