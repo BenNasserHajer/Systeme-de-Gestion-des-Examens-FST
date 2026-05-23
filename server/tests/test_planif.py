@@ -168,6 +168,68 @@ def test_generation_simple_et_split_best_effort() -> None:
         db.close()
 
 
+def test_generation_filtre_semestre_scope_et_pref_departement() -> None:
+    db = _db_session()
+    try:
+        req = GenerationRequest(
+            session_id=10,
+            session_date_debut=date(2026, 6, 1),
+            session_date_fin=date(2026, 6, 30),
+            session_statut=StatutSession.BROUILLON,
+            semestre="S1",
+            scope_section_ids=[1],
+            mode=ModeAffectation.AUTO,
+            tasks=[
+                GenerationTask(
+                    section_id=1,
+                    section_matiere_id=300,
+                    matiere_id=30,
+                    matiere="Mat-S1",
+                    semestre="S1",
+                    section_departement_id=1,
+                    type_epreuve=TypeEpreuve.EXAMEN_FINAL,
+                    duree=120,
+                    section_nb_etudiants=20,
+                    coefficient=2.0,
+                ),
+                GenerationTask(
+                    section_id=2,
+                    section_matiere_id=301,
+                    matiere_id=31,
+                    matiere="Mat-S2",
+                    semestre="S2",
+                    section_departement_id=2,
+                    type_epreuve=TypeEpreuve.EXAMEN_FINAL,
+                    duree=120,
+                    section_nb_etudiants=20,
+                    coefficient=1.0,
+                ),
+            ],
+            creneaux=[
+                GenerationCreneau(
+                    date_examen=date(2026, 6, 2),
+                    heure_debut=time(8, 30),
+                    heure_fin=time(10, 30),
+                )
+            ],
+            salles=[
+                GenerationSalle(salle_id="D2", capacite=30, batiment="B", departement_id=2),
+                GenerationSalle(salle_id="SH", capacite=30, batiment="B", departement_id=None),
+                GenerationSalle(salle_id="D1", capacite=30, batiment="B", departement_id=1),
+            ],
+        )
+
+        creates, result = generer(req, build_default_engine(), [], db)
+
+        assert result.nb_conflits == 0
+        assert len(creates) == 1
+        assert creates[0].section_id == 1
+        assert creates[0].section_matiere_id == 300
+        assert creates[0].salles[0].salle_id == "D1"
+    finally:
+        db.close()
+
+
 def test_emploi_du_temps_trie() -> None:
     db = _db_session()
     try:

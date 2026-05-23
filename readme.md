@@ -1,316 +1,3 @@
-# 🎓 Système de Gestion des Examens - PFA
-
-## 📚 Documentation Complète
-
-**Toute la documentation backend est dans [`server/docs/`](server/docs/)**
-
-### 🎯 Accès Rapide
-
-| Pour | Document |
-|------|----------|
-| 🚀 **Démarrer** | [`server/docs/guides/QUICK_START.md`](server/docs/guides/QUICK_START.md) |
-| 🎨 **Tester (Gradio)** | [`server/docs/guides/START_GRADIO.md`](server/docs/guides/START_GRADIO.md) |
-| 📡 **API Backend** | [`server/docs/api/API_PLANIFICATION.md`](server/docs/api/API_PLANIFICATION.md) |
-| 🎨 **Frontend P3** | [`server/docs/api/GUIDE_P3_FRONTEND.md`](server/docs/api/GUIDE_P3_FRONTEND.md) |
-| 📖 **Swagger** | [`server/docs/api/SWAGGER_EXAMPLES.md`](server/docs/api/SWAGGER_EXAMPLES.md) |
-| 🏗️ **Architecture** | [`server/docs/architecture/ALGORITHME_PLANIFICATION.md`](server/docs/architecture/ALGORITHME_PLANIFICATION.md) |
-| 🎤 **Soutenance** | [`server/docs/soutenance/SOUTENANCE_GUIDE.md`](server/docs/soutenance/SOUTENANCE_GUIDE.md) |
-
----
-
-## 📋 Vue d'Ensemble
-
-Système complet de gestion et de planification automatique des examens pour la Faculté des Sciences de Tunis.
-
-**Composants** :
-- 🔧 **Backend** : API REST FastAPI avec génération automatique d'emplois du temps
-- 🎨 **Frontend** : Interface Next.js pour la gestion administrative
-- 🎯 **Algorithme** : Planification automatique avec 18 contraintes (11 dures + 7 souples)
-
----
-
-## ✨ Fonctionnalités Principales
-
-### 📅 Planification Automatique
-
-- ✅ Génération automatique d'emplois du temps d'examens
-- ✅ 18 contraintes métier (11 dures + 7 souples)
-- ✅ Algorithme glouton avec scoring des contraintes souples
-- ✅ Découpage automatique en groupes équilibrés
-- ✅ Mode best-effort (continue malgré les échecs)
-- ✅ Performance : < 2s pour 100 matières
-
-### 👥 Gestion Administrative
-
-- ✅ Gestion des enseignants, matières, salles, créneaux
-- ✅ Gestion des sessions d'examens (Principale, Rattrapage, Contrôle)
-- ✅ Affectation automatique des salles
-- ✅ Validation et publication des emplois du temps
-
-### 👨‍🏫 Surveillance des Examens
-
-- ✅ Affectation automatique des surveillants
-- ✅ Gestion des disponibilités
-- ✅ Calcul de la charge de surveillance
-- ✅ Génération des convocations
-
----
-
-## 🚀 Démarrage Rapide
-
-### Prérequis
-
-- Python 3.10+
-- PostgreSQL 14+
-- Node.js 18+ (pour le frontend)
-
-### Installation Backend
-
-```bash
-# 1. Naviguer vers le dossier server
-cd PFA/server
-
-# 2. Créer l'environnement virtuel
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-.venv\Scripts\activate     # Windows
-
-# 3. Installer les dépendances
-pip install -r requirements.txt
-
-# 4. Configurer la base de données
-createdb pfa_examens
-echo "DATABASE_URL=postgresql://postgres:password@localhost:5432/pfa_examens" > .env
-
-# 5. Appliquer les migrations
-alembic upgrade head
-
-# 6. Charger les données de test (IGL4)
-psql -d pfa_examens -f app/seed/seed_igl4.sql
-
-# 7. Démarrer le serveur
-uvicorn app.main:app --reload
-```
-
-**API disponible sur** :
-- API : http://127.0.0.1:8000
-- Documentation : http://127.0.0.1:8000/docs
-
-### Installation Frontend
-
-```bash
-# 1. Naviguer vers le dossier frontend
-cd PFA/frontend
-
-# 2. Installer les dépendances
-npm install
-
-# 3. Configurer l'environnement
-echo "NEXT_PUBLIC_API_URL=http://127.0.0.1:8000" > .env.local
-
-# 4. Démarrer le serveur de développement
-npm run dev
-```
-
-**Frontend disponible sur** : http://localhost:3000
-
----
-
-## 🎨 Interface Gradio (Recommandé pour les Tests)
-
-```bash
-# Depuis le dossier server
-cd PFA/server
-source .venv/bin/activate
-
-# Lancer l'interface Gradio
-python -m app.gradio_planif_draft
-```
-
-**Interface disponible sur** : http://127.0.0.1:7860
-
-**Avantages** :
-- ✅ Interface visuelle intuitive
-- ✅ Chargement automatique des données depuis la base
-- ✅ Mode simulation (sans sauvegarde) et production (avec sauvegarde)
-- ✅ Idéal pour les démonstrations et la soutenance
-
----
-
-## 📚 Documentation
-
-### Documentation Backend
-
-| Document | Description |
-|----------|-------------|
-| [`server/README.md`](server/README.md) | Vue d'ensemble complète du backend |
-| [`server/QUICK_START.md`](server/QUICK_START.md) | Guide de démarrage rapide (5 min) |
-| [`server/ALGORITHME_PLANIFICATION.md`](server/ALGORITHME_PLANIFICATION.md) | Documentation exhaustive de l'algorithme |
-| [`server/IMPLEMENTATION_STATUS.md`](server/IMPLEMENTATION_STATUS.md) | État détaillé de l'implémentation |
-| [`server/SOUTENANCE_GUIDE.md`](server/SOUTENANCE_GUIDE.md) | Guide complet pour la soutenance |
-
-### Documentation Gradio
-
-| Document | Description |
-|----------|-------------|
-| [`server/GRADIO_GUIDE.md`](server/GRADIO_GUIDE.md) | Guide complet d'utilisation de Gradio |
-| [`server/START_GRADIO.md`](server/START_GRADIO.md) | Démarrage rapide Gradio (3 étapes) |
-| [`server/GRADIO_MODES.md`](server/GRADIO_MODES.md) | Explication des modes SIMULATION/PRODUCTION |
-| [`server/DEMO_GRADIO_SOUTENANCE.md`](server/DEMO_GRADIO_SOUTENANCE.md) | Script de démonstration pour la soutenance |
-
-### Documentation Utilitaires
-
-| Document | Description |
-|----------|-------------|
-| [`server/DEMO_COMMANDS.md`](server/DEMO_COMMANDS.md) | Toutes les commandes pour les démonstrations |
-| [`server/app/seed/README_SEED.md`](server/app/seed/README_SEED.md) | Guide d'utilisation des scripts de seed |
-| [`RESUME_IMPLEMENTATION.md`](RESUME_IMPLEMENTATION.md) | Résumé complet de l'implémentation |
-
----
-
-## 🧪 Tests et Validation
-
-### Tests Unitaires
-
-```bash
-# Exécuter tous les tests
-cd PFA/server
-pytest tests/test_planif.py -v
-
-# Avec couverture de code
-pytest tests/test_planif.py --cov=app --cov-report=html
-```
-
-### Vérification des Contraintes
-
-```bash
-# Vérifier les 18 contraintes
-python verify_constraints.py
-```
-
-### Script de Démonstration
-
-```bash
-# Démonstration avec données réelles
-python test_generation_example.py
-```
-
----
-
-## 🎯 Cas d'Usage
-
-### Cas 1 : Génération Simple (IGL4)
-
-```bash
-# 1. Charger les données IGL4
-psql -d pfa_examens -f server/app/seed/seed_igl4.sql
-
-# 2. Lancer Gradio
-cd server
-python -m app.gradio_planif_draft
-
-# 3. Dans l'interface :
-#    - Charger données réelles
-#    - Sélectionner : Session 1, IGL4, Examen Final
-#    - Mode SIMULATION (checkbox décochée)
-#    - Générer
-
-# Résultat attendu : 13 planifications, 0 conflit
-```
-
-### Cas 2 : Nettoyage d'une Session
-
-```bash
-# Lister les sessions
-python server/clean_session.py list
-
-# Nettoyer la session 1
-python server/clean_session.py 1
-```
-
-### Cas 3 : Utilisation de l'API
-
-```bash
-# Récupérer l'emploi du temps
-curl http://127.0.0.1:8000/api/sessions/1/emploi-du-temps | jq
-
-# Générer automatiquement
-curl -X POST http://127.0.0.1:8000/api/sessions/1/generer \
-  -H "Content-Type: application/json" \
-  -d @test_data.json
-```
-
----
-
-## 📊 Architecture
-
-### Backend (FastAPI)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         API REST                            │
-│                    (FastAPI + Pydantic)                     │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      Routers (HTTP)                         │
-│         /api/planifications  /api/sessions  etc.            │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Services (Business Logic)                 │
-│         planif_service.py  surv_service.py                  │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                  Algorithms (Pure Logic)                    │
-│         planif_auto.py  contraintes.py  surv_auto.py        │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      CRUD (Data Access)                     │
-│         crud_planif.py  crud_surv.py                        │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Database (PostgreSQL)                     │
-│         SQLAlchemy ORM + Alembic Migrations                 │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Frontend (Next.js)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                      Pages (Routes)                         │
-│    /planification  /surveillance  /enseignants  etc.        │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Components (UI)                           │
-│    EmploiDuTemps  ChargeTable  DataTable  etc.             │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Hooks (State)                            │
-│    usePlanification  useSurveillance                        │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   API Client (Fetch)                        │
-│    planification.ts  surveillance.ts                        │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
 
 ## 🎓 Algorithme de Planification
 
@@ -342,11 +29,14 @@ curl -X POST http://127.0.0.1:8000/api/sessions/1/generer \
 - C16 : section_matiere doit exister
 - C17 : Session éditable (BROUILLON/VALIDEE)
 
-**7 Contraintes Souples** (préférables) :
-- C5 : Préférence même bâtiment
-- C9 : Équilibrage groupes (écart ≤ 1)
-- C10 : Éviter examens consécutifs
-- C13 : Répartition uniforme période
+**7 Contraintes Souples** (5 implémentées) :
+- C5 : Préférence même bâtiment (-5 bonus)
+- **C5bis : Préférence salle du département (-3 bonus)** ⭐ NOUVEAU
+- C9 : Équilibrage groupes (écart ≤ 1) (+5 pénalité)
+- C10 : Éviter examens consécutifs (+10 pénalité)
+- C13 : Répartition uniforme période (+8 pénalité)
+- C? #6 : Non documentée (à définir)
+- C? #7 : Non documentée (à définir)
 
 ### Performance
 
@@ -395,14 +85,177 @@ python server/test_generation_example.py
 
 ---
 
+## 👨‍🏫 Détail P2 - Affectation Enseignants pour la Surveillance (cas multi-groupes)
+
+Cette section répond à la question : **comment affecter des enseignants quand un examen est découpé en plusieurs groupes**.
+
+### 1) Structure de tables utilisée par l'API actuelle
+
+L'API FastAPI (code `server/app/*` + migrations Alembic) s'appuie sur ces tables :
+
+- `planifications`
+  - Contient l'examen (date/heure), `nb_groupes`, `nb_surveillants_requis`.
+- `planif_salle`
+  - Contient le détail par groupe : `planification_id`, `groupe_id`, `groupe_effectif`, `salle_id`.
+  - `groupe_id` est unique par `planification_id`.
+- `surveillances`
+  - Contient les affectations : `planification_id`, `enseignant`, `charge`, `statut`.
+  - **Limite actuelle** : pas de colonne `groupe_id`.
+
+### 2) Ce que fait réellement l'algorithme actuel
+
+Le flux actuel de surveillance est :
+
+1. `POST /api/surveillances/`
+  - Crée directement une ligne dans `surveillances`.
+2. `POST /api/surveillances/auto`
+  - Passe par `build_auto_surveillance(...)` mais ne fait aujourd'hui qu'un retour direct du payload.
+3. `GET /api/surveillances/charges`
+  - Agrège la charge par enseignant (`SUM(charge)`).
+
+Donc aujourd'hui, l'"auto" ne fait pas encore de vraie optimisation multi-groupes.
+
+### 3) Comment affecter un enseignant si l'examen a plusieurs groupes (sans changer le schéma)
+
+Avec le schéma actuel, la stratégie pratique est :
+
+1. Lire les groupes depuis `planif_salle` pour `planification_id = X`.
+2. Calculer `nb_groupes = nombre de lignes planif_salle`.
+3. Créer **une surveillance par groupe** (même `planification_id`, enseignant différent si possible).
+4. Conserver la correspondance groupe ↔ enseignant côté application (ou dans une table annexe).
+
+Exemple SQL (lecture des groupes d'une planification) :
+
+```sql
+SELECT
+  ps.planification_id,
+  ps.groupe_id,
+  ps.groupe_effectif,
+  ps.salle_id
+FROM planif_salle ps
+WHERE ps.planification_id = :planification_id
+ORDER BY ps.groupe_id;
+```
+
+Exemple JSON (création d'une surveillance) :
+
+```json
+{
+  "planification_id": 42,
+  "enseignant": "Hend Fourati",
+  "charge": 1.0
+}
+```
+
+### 4) Algorithme recommandé pour le cas multi-groupes
+
+Pour une vraie affectation "1 groupe = 1 enseignant" équilibrée :
+
+1. **Entrée** :
+  - Tous les groupes depuis `planif_salle`.
+  - Liste enseignants candidats.
+  - Charges existantes (historique `surveillances`).
+  - Disponibilités (si gérées).
+2. **Filtrage candidats** :
+  - Exclure les enseignants non disponibles sur le créneau.
+  - Exclure ceux déjà affectés sur un examen au même créneau.
+3. **Scoring** (plus petit score = meilleur candidat) :
+  - charge actuelle,
+  - bonus si enseignant de la matière,
+  - bonus/malus selon règles métier (grade, département, etc.).
+4. **Affectation gloutonne** :
+  - Pour chaque groupe (du plus grand au plus petit effectif), choisir l'enseignant au score minimal.
+5. **Persist** :
+  - Insérer les lignes de surveillance.
+
+Pseudo-code simplifié :
+
+```text
+groups = groups_of_planification(planification_id)  # from planif_salle
+loads = current_teacher_loads()                     # from surveillances
+
+for group in sort_desc(groups, key=groupe_effectif):
+   candidates = available_teachers(planification_slot)
+   candidates = remove_busy_teachers(candidates, planification_slot)
+
+   best_teacher = argmin(candidates, score(teacher, loads, subject_match))
+
+   create_surveillance(planification_id, best_teacher, charge=1.0)
+   loads[best_teacher] += 1.0
+```
+
+Complexité typique : `O(G × E log E)`
+
+- `G` = nombre de groupes pour la planification
+- `E` = nombre d'enseignants candidats
+
+### 5) Évolution de schéma recommandée (fortement conseillé)
+
+Pour éviter toute ambiguïté, ajouter ces colonnes dans `surveillances` :
+
+- `groupe_id` (obligatoire)
+- `enseignant_id` (FK vers enseignant)
+
+Et ajouter ces contraintes :
+
+- `UNIQUE(planification_id, groupe_id)`
+- `UNIQUE(planification_id, enseignant_id)` (option selon vos règles)
+
+Ainsi, chaque groupe est explicitement relié à un seul surveillant (ou plus, selon la politique).
+
+### 6) Carte du code actuel (où modifier)
+
+- Modèle ORM surveillance : `server/app/models/surveillance.py`
+- Schémas API surveillance : `server/app/schemas/surveillance.py`
+- CRUD surveillance : `server/app/crud/crud_surv.py`
+- Service surveillance : `server/app/services/surv_service.py`
+- Service charge : `server/app/services/charge_service.py`
+- Algorithme auto surveillance : `server/app/algorithms/surv_auto.py`
+- Router surveillance : `server/app/routers/surveillances.py`
+- Structures groupes/salles : `server/app/models/planification.py`
+- Migration surveillance : `server/alembic/versions/002_surv.py`
+
+### 7) Important - différence entre schéma seed SQL et schéma API
+
+Le script SQL complet (`server/app/seed/script.sql`) contient une version plus riche avec `enseignant_id` dans `surveillance`.
+
+L'API FastAPI actuelle, elle, utilise la migration Alembic `002_surv.py` avec `enseignant` (texte) et sans `groupe_id`.
+
+Pour éviter les incohérences, suivre le schéma Alembic pour l'API, ou aligner les deux via une nouvelle migration dédiée.
+
+---
+
 ## 📞 Support et Contact
 
 ### Documentation
 
-- **Backend** : Voir [`server/README.md`](server/README.md)
-- **Algorithme** : Voir [`server/ALGORITHME_PLANIFICATION.md`](server/ALGORITHME_PLANIFICATION.md)
-- **Gradio** : Voir [`server/GRADIO_GUIDE.md`](server/GRADIO_GUIDE.md)
-- **API** : http://127.0.0.1:8000/docs
+#### 📖 Guides Principaux
+- **🚀 Quick Reference** : [`QUICK_REFERENCE.md`](QUICK_REFERENCE.md) - Référence rapide
+- **📋 Résumé Complet** : [`RESUME_FINAL_COMPLET.md`](RESUME_FINAL_COMPLET.md) - Vue d'ensemble complète
+- **🔄 Migration C5bis** : [`MIGRATION_C5BIS_GUIDE.md`](MIGRATION_C5BIS_GUIDE.md) - Guide d'application
+- **⚡ Démarrage Rapide** : [`DEMARRAGE_RAPIDE.md`](DEMARRAGE_RAPIDE.md) - Guide de démarrage
+
+#### 🔧 Documentation Backend
+- **Backend** : [`server/README.md`](server/README.md)
+- **Index Documentation** : [`server/docs/README.md`](server/docs/README.md)
+- **API Planification** : [`server/docs/api/API_PLANIFICATION.md`](server/docs/api/API_PLANIFICATION.md)
+- **Swagger Examples** : [`server/docs/api/SWAGGER_EXAMPLES.md`](server/docs/api/SWAGGER_EXAMPLES.md)
+- **Algorithme** : [`server/docs/architecture/ALGORITHME_PLANIFICATION.md`](server/docs/architecture/ALGORITHME_PLANIFICATION.md)
+- **Gradio** : [`server/docs/guides/GRADIO_GUIDE.md`](server/docs/guides/GRADIO_GUIDE.md)
+
+#### 🎨 Documentation Frontend
+- **Guide P3** : [`frontend/P3_README.md`](frontend/P3_README.md) - Affichage emploi du temps
+- **Guide P3 API** : [`server/docs/api/GUIDE_P3_FRONTEND.md`](server/docs/api/GUIDE_P3_FRONTEND.md)
+
+#### 📊 Documentation Technique
+- **Contraintes** : [`server/docs/demo/CLARIFICATION_CONTRAINTES.md`](server/docs/demo/CLARIFICATION_CONTRAINTES.md)
+- **Implémentation C5bis** : [`server/docs/demo/IMPLEMENTATION_C5BIS.md`](server/docs/demo/IMPLEMENTATION_C5BIS.md)
+- **Résumé Travail** : [`server/docs/demo/RESUME_TRAVAIL.md`](server/docs/demo/RESUME_TRAVAIL.md)
+
+#### 🌐 API
+- **Swagger UI** : http://127.0.0.1:8000/docs
+- **ReDoc** : http://127.0.0.1:8000/redoc
+- **Health Check** : http://127.0.0.1:8000/health
 
 ### Dépannage
 
@@ -418,13 +271,16 @@ python server/test_generation_example.py
 ### ✅ Fonctionnalités Complètes
 
 - [x] Génération automatique d'emplois du temps
-- [x] 18 contraintes implémentées (11 dures + 7 souples)
-- [x] API REST complète (10 endpoints)
+- [x] **16 contraintes implémentées** (11 dures + 5 souples) - 2 souples à définir
+- [x] **C5bis "Préférence département" ajoutée** ⭐ NOUVEAU
+- [x] API REST complète (22 endpoints)
 - [x] Interface Gradio pour tests
 - [x] Tests unitaires (4 tests + vérification contraintes)
-- [x] Documentation exhaustive (12 documents)
+- [x] **Documentation exhaustive (16 documents, 9800+ lignes)**
+- [x] **Guide P3 Frontend complet**
 - [x] Scripts de démonstration
 - [x] Données de seed (IGL4)
+- [x] **Migration Alembic C5bis prête**
 
 ### 🎯 Prêt pour
 
@@ -439,12 +295,14 @@ python server/test_generation_example.py
 
 | Aspect | Valeur | Statut |
 |--------|--------|--------|
-| **Lignes de code** | ~5000 (backend) | ✅ |
-| **Tests unitaires** | 4 + vérification 18 contraintes | ✅ |
+| **Lignes de code** | ~5500 (backend) | ✅ |
+| **Tests unitaires** | 4 + vérification 16 contraintes | ✅ |
 | **Couverture de code** | > 85% | ✅ |
-| **Documentation** | 12 documents (150+ pages) | ✅ |
+| **Documentation** | **16 documents (290+ pages, 9800+ lignes)** | ✅ |
 | **Performance** | < 2s pour 100 matières | ✅ |
 | **Taux de succès** | 94% (moyenne) | ✅ |
+| **Contraintes** | **16/18 (11 dures + 5 souples)** | ✅ |
+| **API Endpoints** | **22 routes** | ✅ |
 
 ---
 
