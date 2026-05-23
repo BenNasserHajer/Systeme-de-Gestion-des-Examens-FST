@@ -218,6 +218,35 @@ class ContrainteBatimentConsecutif(Contrainte):
         return "C5 (souple): preferer le meme batiment pour une section sur la meme journee."
 
 
+class ContrainteDepartementSalle(Contrainte):
+    """C5bis soft preference: prefer rooms from section's department."""
+
+    def verifier(self, planif: PlanificationCreate, contexte: dict, db: Session) -> bool:
+        # Get section department from context
+        section_departement_id = contexte.get("section_departement_id")
+        
+        # If no department specified, constraint is satisfied
+        if section_departement_id is None:
+            return True
+        
+        # If no rooms assigned, constraint cannot be evaluated
+        if not planif.salles:
+            return True
+        
+        # Check if at least one room is from the same department or is shared (None)
+        for salle in planif.salles:
+            departement_id = getattr(salle, "departement_id", None)
+            # Prefer rooms from same department or shared rooms (departement_id = None)
+            if departement_id is None or departement_id == section_departement_id:
+                return True
+        
+        # All rooms are from different departments
+        return False
+
+    def get_message(self) -> str:
+        return "C5bis (souple): preferer les salles du departement de la section."
+
+
 class ContrainteEquilibrageGroupes(Contrainte):
     """C9 soft preference: balanced group sizes (max delta = 1)."""
 
@@ -314,6 +343,7 @@ def build_default_engine() -> ContrainteEngine:
             ContrainteSectionMatiereExists(priorite=1, dure=True),
             ContrainteSessionEditable(priorite=1, dure=True),
             ContrainteBatimentConsecutif(priorite=2, dure=False),
+            ContrainteDepartementSalle(priorite=2, dure=False),
             ContrainteEquilibrageGroupes(priorite=2, dure=False),
             ContrainteEspacementExamens(priorite=3, dure=False),
             ContrainteRepartitionUniforme(priorite=3, dure=False),

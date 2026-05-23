@@ -33,6 +33,22 @@ class Planification(Base):
     type_epreuve: Mapped[str] = mapped_column(String(50), nullable=False)  # EXAMEN_FINAL, DS
     # ✅ CHAMP MANQUANT dans l'ancien model — présent dans le SQL
     semestre: Mapped[int] = mapped_column(Integer, nullable=False)  # 1 ou 2
+    session_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    section_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    section_matiere_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    section_departement_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    matiere: Mapped[str] = mapped_column(String(120), nullable=False)
+    type_epreuve: Mapped[str] = mapped_column(String(24), nullable=False, default="EXAMEN_FINAL")
+
+    date_examen: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    heure_debut: Mapped[time] = mapped_column(Time, nullable=False)
+    heure_fin: Mapped[time] = mapped_column(Time, nullable=False)
+
+    session_date_debut: Mapped[date] = mapped_column(Date, nullable=False)
+    session_date_fin: Mapped[date] = mapped_column(Date, nullable=False)
+    session_statut: Mapped[str] = mapped_column(String(24), nullable=False, default="BROUILLON")
+
     duree: Mapped[int] = mapped_column(Integer, nullable=False, default=120)
     mode_affectation: Mapped[str] = mapped_column(String(50), nullable=False, default="AUTOMATIQUE")
     statut: Mapped[str] = mapped_column(String(50), nullable=False, default="BROUILLON")
@@ -68,17 +84,15 @@ class PlanifSalle(Base):
         Integer, ForeignKey("planification_examen.id", ondelete="CASCADE"),
         primary_key=True, nullable=False, index=True,
     )
-    salle_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("salle.id", ondelete="CASCADE"),
-        primary_key=True, nullable=False, index=True,
-    )
-    groupe_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("groupe.id", ondelete="SET NULL"), nullable=True
-    )
+    salle_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    salle_capacite: Mapped[int] = mapped_column(Integer, nullable=False)
+    salle_batiment: Mapped[str] = mapped_column(String(64), nullable=True)
+    salle_departement_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # Relations
-    planification: Mapped["Planification"] = relationship(
-        "Planification", back_populates="salles_affectees"
-    )
-    salle: Mapped["Salle"] = relationship("Salle", back_populates="planif_salles")
-    groupe: Mapped["Groupe | None"] = relationship("Groupe")
+    groupe_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    groupe_effectif: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    creneau_date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    heure_debut: Mapped[time] = mapped_column(Time, nullable=False)
+
+    planification: Mapped[Planification] = relationship("Planification", back_populates="salles_affectees")

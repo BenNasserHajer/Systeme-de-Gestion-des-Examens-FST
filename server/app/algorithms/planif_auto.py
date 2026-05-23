@@ -54,6 +54,7 @@ CONTRAINTES_DURES: Set[str] = {
 
 CONTRAINTES_SOUPLES: Set[str] = {
     "C5",
+    "C5bis",
     "C9",
     "C10",
     "C13",
@@ -78,6 +79,7 @@ class SalleDTO:
     code: str
     capacite: int
     batiment: str
+    departement_id: int | None = None
 
 
 @dataclass
@@ -94,6 +96,7 @@ class SectionDTO:
     id: int
     nom: str
     nb_etudiants: int
+    departement_id: int | None = None
 
 
 @dataclass
@@ -113,6 +116,7 @@ class SectionMatiereDTO:
     matiere: MatiereDTO
     section_id: int
     matiere_id: int
+    semestre: str
     a_examen_final: bool
     a_ds: bool
     duree_examen: int
@@ -128,6 +132,7 @@ class SessionDTO:
     date_debut: date
     date_fin: date
     type_session: str
+    annee_universitaire: str | None = None
 
 
 @dataclass
@@ -192,7 +197,7 @@ class ContextePlanification:
         session: SessionDTO,
         creneaux: List[CreneauDTO],
         salles: List[SalleDTO],
-        planifs_existantes: List[Tuple[int, int, int, int]],
+        planifs_existantes: List[Tuple[int, int, str, int, int]],
     ) -> None:
         self.session = session
         self.creneaux_disponibles: List[CreneauDTO] = [
@@ -201,29 +206,33 @@ class ContextePlanification:
             if session.date_debut <= c.date <= session.date_fin and c.date.weekday() != 6
         ]
         self.salles_triees: List[SalleDTO] = sorted(salles, key=lambda s: s.capacite)
+        self.salles_par_departement: Dict[int | None, List[SalleDTO]] = {}
+        for salle in self.salles_triees:
+            self.salles_par_departement.setdefault(salle.departement_id, []).append(salle)
+        self.salles_par_departement.setdefault(None, [])
 
         self._salles_occupees: Dict[Tuple[date, time], Set[int]] = {}
         self._sections_occupees: Dict[Tuple[date, time], Set[int]] = {}
-        self._matieres_planifiees: Set[Tuple[int, int]] = set()
+        self._matieres_planifiees: Set[Tuple[int, int, str]] = set()
         self._examens_par_section_jour: Dict[Tuple[int, date], int] = {}
         self._batiments_par_section_jour: Dict[Tuple[int, date], Set[str]] = {}
 
         self._creneaux_index: Dict[int, CreneauDTO] = {c.id: c for c in creneaux}
         self._salles_index: Dict[int, SalleDTO] = {s.id: s for s in salles}
 
-        exams_seen: Set[Tuple[int, int, int]] = set()
-        for section_id, matiere_id, creneau_id, salle_id in planifs_existantes:
-            exam_key = (section_id, matiere_id, creneau_id)
+        exams_seen: Set[Tuple[int, int, str, int]] = set()
+        for section_id, matiere_id, semestre, creneau_id, salle_id in planifs_existantes:
+            exam_key = (section_id, matiere_id, semestre, creneau_id)
             c = self._creneaux_index.get(creneau_id)
             s = self._salles_index.get(salle_id)
 
-            self._matieres_planifiees.add((section_id, matiere_id))
+            self._matieres_planifiees.add((section_id, matiere_id, semestre))
             if c is None:
                 continue
 
             if exam_key not in exams_seen:
                 exams_seen.add(exam_key)
-                self._enregistrer_exam(section_id, matiere_id, c)
+                self._enregistrer_exam(section_id, matiere_id, semestre, c)
 
             if s is not None:
                 self._enregistrer_salle(section_id, c, s)
@@ -236,8 +245,8 @@ class ContextePlanification:
         key = (creneau.date, creneau.heure_debut)
         return section_id not in self._sections_occupees.get(key, set())
 
-    def est_deja_planifiee(self, section_id: int, matiere_id: int) -> bool:
-        return (section_id, matiere_id) in self._matieres_planifiees
+    def est_deja_planifiee(self, section_id: int, matiere_id: int, semestre: str) -> bool:
+        return (section_id, matiere_id, semestre) in self._matieres_planifiees
 
     def nb_examens_section_jour(self, section_id: int, d: date) -> int:
         return self._examens_par_section_jour.get((section_id, d), 0)
@@ -250,14 +259,14 @@ class ContextePlanification:
 
     def enregistrer(self, resultat: ResultatPlanification) -> None:
         sm = resultat.section_matiere
-        self._enregistrer_exam(sm.section_id, sm.matiere_id, resultat.creneau)
+        self._enregistrer_exam(sm.section_id, sm.matiere_id, sm.semestre, resultat.creneau)
         for attr in resultat.attributions:
             self._enregistrer_salle(sm.section_id, resultat.creneau, attr.salle)
 
-    def _enregistrer_exam(self, section_id: int, matiere_id: int, creneau: CreneauDTO) -> None:
+    def _enregistrer_exam(self, section_id: int, matiere_id: int, semestre: str, creneau: CreneauDTO) -> None:
         key_slot = (creneau.date, creneau.heure_debut)
         key_day = (section_id, creneau.date)
-        self._matieres_planifiees.add((section_id, matiere_id))
+        self._matieres_planifiees.add((section_id, matiere_id, semestre))
         self._sections_occupees.setdefault(key_slot, set()).add(section_id)
         self._examens_par_section_jour[key_day] = self._examens_par_section_jour.get(key_day, 0) + 1
 
@@ -314,15 +323,32 @@ def calculer_groupes(effectif_total: int, creneau: CreneauDTO, contexte: Context
     return decouper_en_groupes(effectif_total, capacite_max)
 
 
+def _priorite_departement_salle(salle: SalleDTO, section_departement_id: int | None) -> int:
+    if section_departement_id is None:
+        return 0 if salle.departement_id is None else 1
+    if salle.departement_id == section_departement_id:
+        return 0
+    if salle.departement_id is None:
+        return 1
+    return 2
+
+
 def trouver_attribution_salles(
     groupes: List[int],
     creneau: CreneauDTO,
     contexte: ContextePlanification,
     section_id: int,
+    section_departement_id: int | None = None,
 ) -> Optional[List[AttributionSalle]]:
     batiments_preferes = contexte.batiments_section_jour(section_id, creneau.date)
     disponibles = [s for s in contexte.salles_triees if contexte.salle_est_libre(s.id, creneau)]
-    disponibles.sort(key=lambda s: (0 if s.batiment in batiments_preferes else 1, s.capacite))
+    disponibles.sort(
+        key=lambda s: (
+            0 if s.batiment in batiments_preferes else 1,
+            _priorite_departement_salle(s, section_departement_id),
+            s.capacite,
+        )
+    )
 
     attributions: List[AttributionSalle] = []
     deja_utilisees: Set[int] = set()
@@ -361,7 +387,39 @@ def score_souples(
         if attr.salle.batiment in batiments_preferes:
             score -= 5
 
+    # C5bis: Bonus if room is from section's department
+    if sm.section.departement_id is not None:
+        for attr in attributions:
+            if attr.salle.departement_id == sm.section.departement_id:
+                score -= 3
+            elif attr.salle.departement_id is None:
+                # Shared rooms (no department) get a smaller bonus
+                score -= 1
+
     return score
+
+
+def _filtrer_matieres_a_planifier(
+    matieres: List[SectionMatiereDTO],
+    contexte: ContextePlanification,
+    *,
+    semestre: str,
+    scope_section_ids: set[int] | None,
+) -> list[SectionMatiereDTO]:
+    filtered: list[SectionMatiereDTO] = []
+    for sm in matieres:
+        if sm.semestre != semestre:
+            continue
+        if scope_section_ids and sm.section_id not in scope_section_ids:
+            continue
+        if sm.type_epreuve == "EXAMEN_FINAL" and not sm.a_examen_final:
+            continue
+        if sm.type_epreuve == "DS" and not sm.a_ds:
+            continue
+        if contexte.est_deja_planifiee(sm.section_id, sm.matiere_id, sm.semestre):
+            continue
+        filtered.append(sm)
+    return filtered
 
 
 class Planificateur:
@@ -373,6 +431,8 @@ class Planificateur:
         matieres: List[SectionMatiereDTO],
         contexte: ContextePlanification,
         known_section_matiere_ids: set[int] | None = None,
+        semestre: str = "S1",
+        scope_section_ids: set[int] | None = None,
     ) -> None:
         if session.statut == "PUBLIEE":
             raise SessionVerrouillee(f"[C15/C17] Session {session.id} is published.")
@@ -380,14 +440,15 @@ class Planificateur:
         self.session = session
         self.contexte = contexte
         self.known_section_matiere_ids = known_section_matiere_ids
+        self.semestre = semestre
+        self.scope_section_ids = scope_section_ids
 
-        filtered = []
-        for sm in matieres:
-            if sm.type_epreuve == "EXAMEN_FINAL" and not sm.a_examen_final:
-                continue
-            if sm.type_epreuve == "DS" and not sm.a_ds:
-                continue
-            filtered.append(sm)
+        filtered = _filtrer_matieres_a_planifier(
+            matieres,
+            contexte,
+            semestre=semestre,
+            scope_section_ids=scope_section_ids,
+        )
 
         self.matieres = sorted(
             filtered,
@@ -424,7 +485,7 @@ class Planificateur:
         if self.known_section_matiere_ids is not None and sm.id not in self.known_section_matiere_ids:
             raise ConflitContrainte("C16", f"section_matiere {sm.id} not found in referential data.")
 
-        if self.contexte.est_deja_planifiee(sm.section_id, sm.matiere_id):
+        if self.contexte.est_deja_planifiee(sm.section_id, sm.matiere_id, sm.semestre):
             raise ConflitContrainte("C12", "Subject already planned for this section and session.")
 
         meilleur: Optional[ResultatPlanification] = None
@@ -443,7 +504,13 @@ class Planificateur:
             if groupes is None:
                 continue
 
-            attributions = trouver_attribution_salles(groupes, creneau, self.contexte, sm.section_id)
+            attributions = trouver_attribution_salles(
+                groupes,
+                creneau,
+                self.contexte,
+                sm.section_id,
+                sm.section.departement_id,
+            )
             if attributions is None:
                 continue
 
@@ -480,6 +547,7 @@ def _build_planner_inputs(
         date_debut=request.session_date_debut,
         date_fin=request.session_date_fin,
         type_session="EXAMEN",
+        annee_universitaire=request.annee_universitaire,
     )
 
     creneaux: list[CreneauDTO] = []
@@ -499,7 +567,15 @@ def _build_planner_inputs(
     salles: list[SalleDTO] = []
     salle_code_to_id: dict[str, int] = {}
     for idx, s in enumerate(sorted(request.salles, key=lambda x: x.capacite), start=1):
-        salles.append(SalleDTO(id=idx, code=s.salle_id, capacite=s.capacite, batiment=s.batiment or ""))
+        salles.append(
+            SalleDTO(
+                id=idx,
+                code=s.salle_id,
+                capacite=s.capacite,
+                batiment=s.batiment or "",
+                departement_id=s.departement_id,
+            )
+        )
         salle_code_to_id[s.salle_id] = idx
 
     matieres: list[SectionMatiereDTO] = []
@@ -512,17 +588,19 @@ def _build_planner_inputs(
                     id=task.section_id,
                     nom=f"Section-{task.section_id}",
                     nb_etudiants=task.section_nb_etudiants,
+                    departement_id=task.section_departement_id,
                 ),
                 matiere=MatiereDTO(
-                    id=task.section_matiere_id,
-                    code=f"MAT-{task.section_matiere_id}",
+                    id=task.matiere_id or task.section_matiere_id,
+                    code=f"MAT-{task.matiere_id or task.section_matiere_id}",
                     intitule=task.matiere,
                     coefficient=task.coefficient,
                     a_examen_final=task.a_examen_final,
                     a_ds=task.a_ds,
                 ),
                 section_id=task.section_id,
-                matiere_id=task.section_matiere_id,
+                matiere_id=task.matiere_id or task.section_matiere_id,
+                semestre=task.semestre,
                 a_examen_final=task.a_examen_final,
                 a_ds=task.a_ds,
                 duree_examen=task.duree,
@@ -533,16 +611,19 @@ def _build_planner_inputs(
         )
         task_by_sm_id[task.section_matiere_id] = task
 
-    planifs_existantes: list[tuple[int, int, int, int]] = []
+    planifs_existantes: list[tuple[int, int, str, int, int]] = []
     for planif in existing_planifs:
         creneau_id = creneau_key_to_id.get((planif.date_examen, planif.heure_debut))
         if creneau_id is None:
             continue
+        task = task_by_sm_id.get(planif.section_matiere_id)
+        matiere_id = (task.matiere_id if task and task.matiere_id else planif.section_matiere_id)
+        semestre = task.semestre if task else request.semestre
         for salle in planif.salles_affectees:
             salle_id = salle_code_to_id.get(salle.salle_id)
             if salle_id is None:
                 continue
-            planifs_existantes.append((planif.section_id, planif.section_matiere_id, creneau_id, salle_id))
+            planifs_existantes.append((planif.section_id, matiere_id, semestre, creneau_id, salle_id))
 
     contexte = ContextePlanification(
         session=session,
@@ -609,9 +690,17 @@ def generer(
     del db
 
     session, matieres, contexte, task_by_sm_id = _build_planner_inputs(request, existing_planifs)
+    scope_section_ids = set(request.scope_section_ids) if request.scope_section_ids else None
 
     try:
-        planner = Planificateur(session, matieres, contexte, known_section_matiere_ids)
+        planner = Planificateur(
+            session,
+            matieres,
+            contexte,
+            known_section_matiere_ids,
+            semestre=request.semestre,
+            scope_section_ids=scope_section_ids,
+        )
         resultats, rapport = planner.generer()
     except SessionVerrouillee:
         return [], GenerationResult(nb_crees=0, nb_conflits=1, conflits=["[C15/C17] Session is published."])
