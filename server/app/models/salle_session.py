@@ -18,9 +18,8 @@ class Salle(Base):
     batiment: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     # Relations
-    planif_salles: Mapped[list["PlanifSalle"]] = relationship(
-        "PlanifSalle", back_populates="salle", lazy="selectin"
-    )
+    # Note: PlanifSalle stores salle_id as string (room code), not FK to Salle.id
+    # So we don't define a relationship here - it would require a foreign key
     surveillances: Mapped[list["Surveillance"]] = relationship(
         "Surveillance", back_populates="salle", lazy="selectin"
     )
