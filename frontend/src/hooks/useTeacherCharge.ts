@@ -12,9 +12,16 @@ type Pagination = {
   pages: number;
 };
 
+type ChargeMeta = {
+  sessionId: number;
+  anneeUniversitaire: string;
+  sessionLabel: string | null;
+};
+
 type UseTeacherChargeState = {
   items: GetAllSurveillantsItem[];
   pagination: Pagination | null;
+  meta: ChargeMeta | null;
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -26,6 +33,7 @@ export function useTeacherCharge(
 ): UseTeacherChargeState {
   const [items, setItems] = useState<GetAllSurveillantsItem[]>([]);
   const [pagination, setPagination] = useState<Pagination | null>(null);
+  const [meta, setMeta] = useState<ChargeMeta | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +41,7 @@ export function useTeacherCharge(
     if (!sessionId) {
       setItems([]);
       setPagination(null);
+      setMeta(null);
       setLoading(false);
       setError("Session ID manquant");
       return;
@@ -43,12 +52,17 @@ export function useTeacherCharge(
       const data: GetAllSurveillantsResponse = await getAllSurveillants({
         session_id: sessionId,
         page: options.page ?? 1,
-        limit: options.limit ?? 20,
-        sort: options.sort ?? "volume_restant",
+        limit: options.limit ?? 500,
+        sort: options.sort ?? "charge_surveillance",
         order: options.order ?? "desc",
       });
       setItems(data.data);
       setPagination(data.pagination as Pagination);
+      setMeta({
+        sessionId: data.session_id,
+        anneeUniversitaire: data.annee_universitaire,
+        sessionLabel: data.session_label ?? null,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -66,5 +80,5 @@ export function useTeacherCharge(
     };
   }, [refresh]);
 
-  return { items, pagination, loading, error, refresh };
+  return { items, pagination, meta, loading, error, refresh };
 }

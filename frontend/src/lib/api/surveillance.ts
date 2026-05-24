@@ -11,6 +11,8 @@ import type {
   SurveillanceUpdatePayload,
 } from "@/lib/types/surveillance";
 
+import { apiFetch, handleApiResponse } from "@/lib/api/errors";
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api";
 
 type AffecterSessionRequest = {
@@ -175,13 +177,10 @@ export async function getAllSurveillants(
   },
 ): Promise<GetAllSurveillantsResponse> {
   const query = buildQuery(params);
-  const response = await fetch(`${API_BASE}/surveillances/getallsurveillants?${query}`, {
+  const response = await apiFetch(`${API_BASE}/surveillances/getallsurveillants?${query}`, {
     cache: "no-store",
   });
-  if (!response.ok) {
-    throw new Error("Failed to fetch surveillants list");
-  }
-  return response.json();
+  return handleApiResponse(response, "Impossible de charger la liste des enseignants");
 }
 
 export async function getEnseignantsDisponibles(

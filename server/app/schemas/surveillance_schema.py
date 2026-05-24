@@ -307,14 +307,17 @@ class EnseignantDisponible(BaseModel):
 # ─────────────────────────────────────────────────────────────
 
 class GetAllSurveillantsItem(BaseModel):
-    enseignant_id:    int
-    nom:              str
-    prenom:           str
-    grade:            Optional[str]
-    departement:      dict
-    volume_horaire:   float
-    volume_consomme:  float
-    volume_restant:   float
+    enseignant_id: int
+    nom: str
+    prenom: str
+    grade: Optional[str] = None
+    departement: dict
+    volume_horaire: float
+    volume_consomme: float
+    volume_restant: float
+    volume_annuel: float
+    charge_surveillance: float
+    taux_utilisation: float = 0.0
     nb_surveillances: int
 
     class Config:
@@ -322,7 +325,10 @@ class GetAllSurveillantsItem(BaseModel):
 
 
 class GetAllSurveillantsResponse(BaseModel):
-    data:       list[GetAllSurveillantsItem]
+    session_id: int
+    annee_universitaire: str
+    session_label: Optional[str] = None
+    data: list[GetAllSurveillantsItem]
     pagination: dict
 
 
