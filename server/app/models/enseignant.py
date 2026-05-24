@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.matiere import Matiere
     from app.models.surveillance import Surveillance
     from app.models.disponibilite import DisponibiliteEnseignant
+    from app.models.compte_enseignant import CompteEnseignant  # ← AJOUTER ICI
 
 
 class Enseignant(Base):
@@ -41,7 +42,9 @@ class Enseignant(Base):
     surveillances: Mapped[list["Surveillance"]] = relationship(
         "Surveillance", back_populates="enseignant", lazy="selectin"
     )
-
+    compte: Mapped["CompteEnseignant"] = relationship(
+        "CompteEnseignant", back_populates="enseignant", uselist=False
+    ) 
 
 class ChargeHoraire(Base):
     __tablename__ = "charge_horaire"

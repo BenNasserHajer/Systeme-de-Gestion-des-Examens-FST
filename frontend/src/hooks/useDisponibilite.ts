@@ -31,10 +31,7 @@ export function useDisponibilite(
     setLoading(true);
     setError(null);
     try {
-      const response = await getEnseignantDisponibilites(enseignantId, {
-        date_debut: dateDebut,
-        date_fin: dateFin,
-      });
+      const response = await getEnseignantDisponibilites(enseignantId, dateDebut, dateFin);
       setData(response);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");

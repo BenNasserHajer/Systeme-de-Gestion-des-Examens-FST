@@ -1241,6 +1241,23 @@ CREATE TABLE enseignant (
 );
 
 -- ============================================================
+-- 9b. COMPTE_ENSEIGNANT (Auth)       
+-- ============================================================
+CREATE TABLE compte_enseignant (
+    id              SERIAL PRIMARY KEY,
+    enseignant_id   INTEGER      NOT NULL UNIQUE REFERENCES enseignant(id) ON DELETE CASCADE,
+    email           VARCHAR(100) NOT NULL UNIQUE,
+    mot_de_passe    VARCHAR(255) NOT NULL,
+    type_compte     VARCHAR(30)  NOT NULL DEFAULT 'ENSEIGNANT',
+    actif           BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_compte_enseignant_email ON compte_enseignant(email);
+CREATE INDEX idx_compte_enseignant_ens   ON compte_enseignant(enseignant_id);
+
+-- ============================================================
 -- 10. CHARGE_HORAIRE
 -- ============================================================
 CREATE TABLE charge_horaire (
@@ -1443,6 +1460,19 @@ INSERT INTO enseignant (nom, prenom, grade, email, telephone, departement_id) VA
 ('Zouaoui',  'Sana',   'PES-Info',        'sana.zouaoui@fst.utm.tn',    '96276502', 1),
 ('Meddeb',   'Rahma',  'Maître Ass.',     'rahma.meddeb@fst.utm.tn',    '98424172', 1),
 ('Hizem',    'Moez',   'Maître Ass.',     'moez.hizem@fst.utm.tn',      '24740880', 1);
+
+-- ─────────────────────────────────────────────────────────────
+-- 8b. COMPTE_ENSEIGNANT (Auth)       
+-- ─────────────────────────────────────────────────────────────
+INSERT INTO compte_enseignant (enseignant_id, email, mot_de_passe, type_compte) VALUES
+((SELECT id FROM enseignant WHERE nom='Manita'  AND prenom='Ghaith'),
+ 'ghaith.manita@fst.utm.tn',  'Manita123',   'ENSEIGNANT'),
+((SELECT id FROM enseignant WHERE nom='Zouaoui' AND prenom='Sana'),
+ 'sana.zouaoui@fst.utm.tn',   'Zouaoui123',  'ENSEIGNANT'),
+((SELECT id FROM enseignant WHERE nom='Meddeb'  AND prenom='Rahma'),
+ 'rahma.meddeb@fst.utm.tn',   'Meddeb123',   'ENSEIGNANT'),
+((SELECT id FROM enseignant WHERE nom='Hizem'   AND prenom='Moez'),
+ 'moez.hizem@fst.utm.tn',     'Hizem123',    'ENSEIGNANT');
 
 -- ─────────────────────────────────────────────────────────────
 -- 9. CHARGE_HORAIRE
