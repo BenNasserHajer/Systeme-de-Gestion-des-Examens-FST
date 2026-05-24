@@ -8,6 +8,7 @@ import { UnscheduledExamsList } from "@/components/planification/UnscheduledExam
 import { AddExamModal } from "@/components/planification/AddExamModal";
 import { Button } from "@/components/ui/Button";
 import { usePlanificationSchedule } from "@/hooks/usePlanificationSchedule";
+import { usePlanificationPDFExport } from "@/hooks/usePlanificationPDFExport";
 import { createPlanification } from "@/lib/api/planification";
 import { ApiError } from "@/lib/api/errors";
 import type { ConflitDetail } from "@/lib/types/planification";
@@ -38,6 +39,8 @@ export default function PlanificationPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [selectedSlot, setSelectedSlot] = useState<{ date: string; hour: number } | null>(null);
+  
+  const { exportPDF, loading: exporting, error: exportError } = usePlanificationPDFExport();
   
   const draftCount = items.filter((item) => item.statut === "BROUILLON").length;
 
@@ -165,6 +168,44 @@ export default function PlanificationPage() {
     setSuccessMessage("Emploi du temps valide et enregistre (statut VALIDEE).");
   };
 
+  const handleExportPDF = async () => {
+    if (!catalogue || !sessionId || !sectionId) {
+      alert("Veuillez sélectionner une session et une section.");
+      return;
+    }
+
+    const session = catalogue.sessions.find((s) => s.session_id === sessionId);
+    const section = catalogue.sections.find((s) => s.section_id === sectionId);
+
+    // Transform items to PDF format
+    const exams = items.map((item) => ({
+      matiere: item.matiere,
+      date: item.date_examen,
+      heure_debut: item.heure_debut,
+      heure_fin: item.heure_fin,
+      salles: item.salles.map((s) => s.salle_id || "—"),
+      groupes: item.salles.map((s) => `G${s.groupe_id}`),
+      duree: item.duree,
+    }));
+
+    await exportPDF({
+      session: session
+        ? {
+            type_session: session.label,
+            annee_universitaire: null,
+          }
+        : undefined,
+      section: section
+        ? {
+            label: section.label,
+            effectif: section.effectif,
+          }
+        : undefined,
+      semestre,
+      exams,
+    });
+  };
+
   return (
     <section className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -174,18 +215,34 @@ export default function PlanificationPage() {
             Generez l&apos;emploi du temps, ajustez par glisser-deposer, puis validez.
           </p>
         </div>
-        <Button
-          variant="secondary"
-          isLoading={loading}
-          disabled={!sessionId || draftCount === 0}
-          onClick={() => void handleValidate()}
-        >
-          Valider ({draftCount})
-        </Button>
+        <div className="flex gap-3">
+          <Button
+            variant="secondary"
+            isLoading={exporting}
+            disabled={!sessionId || items.length === 0}
+            onClick={() => void handleExportPDF()}
+          >
+            Exporter en PDF
+          </Button>
+          <Button
+            variant="secondary"
+            isLoading={loading}
+            disabled={!sessionId || draftCount === 0}
+            onClick={() => void handleValidate()}
+          >
+            Valider ({draftCount})
+          </Button>
+        </div>
       </header>
 
       {error ? (
         <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+      ) : null}
+
+      {exportError ? (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          Erreur d&apos;export PDF: {exportError}
+        </div>
       ) : null}
 
       {successMessage ? (
