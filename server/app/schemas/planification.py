@@ -42,11 +42,24 @@ class PlanifSalleAssign(PlanifSalleBase):
 
 
 class PlanifSalleOut(PlanifSalleBase):
-    id: int
+    id: int | None = None
     creneau_date: date
     heure_debut: time
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class GenerationSimpleRequest(BaseModel):
+    """Simplified generation payload from admin form (section, session, type, niveau)."""
+
+    session_id: int = Field(ge=1)
+    section_label: str = Field(min_length=1, max_length=120)
+    niveau: str = Field(min_length=1, max_length=20)
+    type_epreuve_label: str = Field(min_length=1, max_length=40)
+
+
+class ValiderSessionRequest(BaseModel):
+    section_id: int | None = Field(default=None, ge=1)
 
 
 class PlanificationBase(BaseModel):
@@ -55,6 +68,7 @@ class PlanificationBase(BaseModel):
     section_matiere_id: int = Field(ge=1)
     section_departement_id: int | None = Field(default=None, ge=1)
     matiere: str = Field(min_length=2, max_length=120)
+    semestre: str = Field(default="S1", min_length=1, max_length=10)
 
     type_epreuve: TypeEpreuve = TypeEpreuve.EXAMEN_FINAL
     mode_affectation: ModeAffectation = ModeAffectation.MANUEL

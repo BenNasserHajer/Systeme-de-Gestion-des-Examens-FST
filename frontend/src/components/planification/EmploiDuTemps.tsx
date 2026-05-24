@@ -1,7 +1,7 @@
 import type { Planification } from "@/lib/types/planification";
 
 import { DataTable } from "@/components/ui/DataTable";
-import { formatDate } from "@/lib/utils";
+import { getPrimarySalle } from "@/lib/utils/planificationHelpers";
 
 type EmploiDuTempsProps = {
   items: Planification[];
@@ -17,7 +17,7 @@ type PlanificationRow = {
 export function EmploiDuTemps({ items }: EmploiDuTempsProps) {
   const rows: PlanificationRow[] = items.map((item) => ({
     matiere: item.matiere,
-    salle: item.salle,
+    salle: getPrimarySalle(item),
     date: formatDate(item.date_examen),
     statut: item.statut,
   }));
@@ -33,4 +33,9 @@ export function EmploiDuTemps({ items }: EmploiDuTempsProps) {
       rows={rows}
     />
   );
+}
+
+function formatDate(value: string): string {
+  const date = new Date(`${value}T12:00:00`);
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(date);
 }

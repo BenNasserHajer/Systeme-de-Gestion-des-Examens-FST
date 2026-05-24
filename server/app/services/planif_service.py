@@ -21,6 +21,9 @@ from app.models.planification import Planification
 from app.schemas.planification import (
     GenerationRequest,
     GenerationResult,
+    GenerationTask,
+    GenerationCreneau,
+    GenerationSalle,
     PlanifSalleAssign,
     PlanificationCreate,
     PlanificationUpdate,
@@ -28,6 +31,7 @@ from app.schemas.planification import (
     StatutSession,
     TypeEpreuve,
 )
+from app.services.catalogue_service import build_generation_request, load_catalogue
 
 
 class ConstraintViolationError(ValueError):
@@ -176,6 +180,35 @@ class PlanifService:
         planif = self.get_by_id(planif_id)
         delete_planification(self.db, planif)
 
+    def generer_from_form(
+        self,
+        *,
+        session_id: int,
+        section_label: str,
+        niveau: str,
+        type_epreuve_label: str,
+    ) -> GenerationResult:
+        catalogue = load_catalogue(self.db)
+        raw = build_generation_request(
+            catalogue,
+            session_id=session_id,
+            section_label=section_label,
+            type_epreuve_label=type_epreuve_label,
+            niveau=niveau,
+        )
+        request = GenerationRequest(
+            session_id=raw["session_id"],
+            session_date_debut=raw["session_date_debut"],
+            session_date_fin=raw["session_date_fin"],
+            session_statut=StatutSession(raw["session_statut"]),
+            mode=raw["mode"],
+            scope_section_ids=raw["scope_section_ids"],
+            tasks=[GenerationTask(**task) for task in raw["tasks"]],
+            creneaux=[GenerationCreneau(**c) for c in raw["creneaux"]],
+            salles=[GenerationSalle(**s) for s in raw["salles"]],
+        )
+        return self.generer_planifications(request)
+
     def generer_planifications(self, request: GenerationRequest) -> GenerationResult:
         request = self._resolve_session_context(request)
         existing = list_existing_for_session(self.db, request.session_id)
@@ -233,6 +266,26 @@ class PlanifService:
             type_epreuve=type_epreuve.value if type_epreuve is not None else None,
             statut=statut.value if statut is not None else None,
         )
+
+    def valider_session(
+        self,
+        session_id: int,
+        *,
+        section_id: int | None = None,
+    ) -> list[Planification]:
+        planifs = list_planifications(
+            self.db,
+            session_id=session_id,
+            section_id=section_id,
+            statut=StatutPlanification.BROUILLON.value,
+            skip=0,
+            limit=500,
+        )
+        updated: list[Planification] = []
+        for planif in planifs:
+            patch = PlanificationUpdate(statut=StatutPlanification.VALIDEE)
+            updated.append(update_planification(self.db, planif, patch))
+        return updated
 
     def valider_planification(self, planif_id: int) -> Planification:
         planif = self.get_by_id(planif_id)
