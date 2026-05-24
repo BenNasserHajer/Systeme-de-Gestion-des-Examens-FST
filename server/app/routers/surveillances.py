@@ -86,7 +86,15 @@ def _build_result(r, db: Session, session_orm) -> AffecterSessionResult:
     niv = sec.niveau             if sec    else None
     dep = niv.departement        if niv    else None
     cren = planif.creneau        if planif else None
-    dept_exam = planif.departement if planif else None
+    
+    # Charger le département de l'examen si section_departement_id existe
+    dept_exam = None
+    if planif and planif.section_departement_id:
+        from app.models.departement_niveau_section import Departement
+        dept_exam = db.query(Departement).filter(
+            Departement.id == planif.section_departement_id
+        ).first()
+    
     sess = planif.session        if planif else None
 
     matiere_out = MatiereOut(
@@ -130,7 +138,7 @@ def _build_result(r, db: Session, session_orm) -> AffecterSessionResult:
         from app.models.departement_niveau_section import Groupe
         grp_orm   = db.query(Groupe).filter(Groupe.id == g.groupe_id).first()  if g.groupe_id else None
         from app.models.salle_session import Salle
-        salle_orm = db.query(Salle).filter(Salle.id == g.salle_id).first()     if g.salle_id  else None
+        salle_orm = db.query(Salle).filter(Salle.code == g.salle_id).first()   if g.salle_id  else None
 
         groupe_out = GroupeOut(
             id=grp_orm.id, numero=grp_orm.numero,
@@ -149,27 +157,51 @@ def _build_result(r, db: Session, session_orm) -> AffecterSessionResult:
             surv_db = db.query(SurveillanceModel).filter(
                 SurveillanceModel.id == surv_obj.id
             ).first()
-            if not surv_db:
+            
+            if surv_db:
+                ens      = surv_db.enseignant
+                dept_ens = ens.departement if ens else None
+                grp_surv = surv_db.groupe
+                salle_surv = surv_db.salle
+                s_id = surv_db.id
+                ens_id = ens.id if ens else surv_db.enseignant_id
+                charge = surv_db.charge
+                mode_aff = surv_db.mode_affectation
+                statut = surv_db.statut_surveillance
+                pres = surv_db.presence
+                est_ext = surv_db.est_externe
+                motif_ext = surv_db.motif_externe
+            else:
+                # Dry run fallback
+                ens = getattr(surv_obj, "enseignant", None)
+                dept_ens = ens.departement if ens else getattr(surv_obj, "_fake_departement", None)
+                grp_surv = getattr(surv_obj, "groupe", None)
+                salle_surv = getattr(surv_obj, "salle", None)
+                s_id = surv_obj.id
+                ens_id = surv_obj.enseignant_id
+                charge = surv_obj.charge
+                mode_aff = surv_obj.mode_affectation
+                statut = surv_obj.statut_surveillance
+                pres = surv_obj.presence
+                est_ext = surv_obj.est_externe
+                motif_ext = surv_obj.motif_externe
+
+            if not ens and not surv_db and not hasattr(surv_obj, "_fake_nom"):
                 continue
 
-            ens      = surv_db.enseignant
-            dept_ens = ens.departement if ens else None
-            grp_surv  = surv_db.groupe
-            salle_surv = surv_db.salle
-
             surveillants_out.append(EnseignantAffecteOut(
-                surveillance_id=surv_db.id,
-                enseignant_id=ens.id          if ens else surv_db.enseignant_id,
-                nom=ens.nom                   if ens else "",
-                prenom=ens.prenom             if ens else "",
-                grade=ens.grade               if ens else None,
+                surveillance_id=s_id,
+                enseignant_id=ens_id,
+                nom=ens.nom                   if ens else getattr(surv_obj, "_fake_nom", ""),
+                prenom=ens.prenom             if ens else getattr(surv_obj, "_fake_prenom", ""),
+                grade=ens.grade               if ens else getattr(surv_obj, "_fake_grade", None),
                 email=ens.email               if ens else None,
                 telephone=ens.telephone       if ens else None,
                 departement=DepartementOut(
-                    id=dept_ens.id,
-                    nom=dept_ens.nom,
-                    code=dept_ens.code,
-                ) if dept_ens else None,
+                    id=dept_ens.id if dept_ens else None,
+                    nom=dept_ens.nom if dept_ens else getattr(surv_obj, "_fake_dept_nom", None),
+                    code=dept_ens.code if dept_ens else getattr(surv_obj, "_fake_dept_code", None),
+                ) if dept_ens or hasattr(surv_obj, "_fake_dept_nom") else None,
                 groupe=GroupeOut(
                     id=grp_surv.id,
                     numero=grp_surv.numero,
@@ -184,12 +216,12 @@ def _build_result(r, db: Session, session_orm) -> AffecterSessionResult:
                     capacite=salle_surv.capacite,
                     batiment=salle_surv.batiment,
                 ) if salle_surv else None,
-                charge=float(surv_db.charge),
-                mode_affectation=surv_db.mode_affectation,
-                statut_surveillance=surv_db.statut_surveillance,
-                presence=surv_db.presence,
-                est_externe=surv_db.est_externe,
-                motif_externe=surv_db.motif_externe,
+                charge=float(charge),
+                mode_affectation=mode_aff,
+                statut_surveillance=statut,
+                presence=pres,
+                est_externe=est_ext,
+                motif_externe=motif_ext,
             ))
 
         groupes_out.append(GroupeResultOut(
@@ -279,6 +311,7 @@ def affecter_session_automatique(
             section_nom=payload.section_nom,
             periode=payload.periode,
             type_epreuve=payload.type_epreuve,
+            dry_run=not payload.save,
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1100,7 +1133,7 @@ def get_session_conflits(
 
             if nb < planif.nb_surveillants_requis:
                 grp   = db.query(Groupe).filter(Groupe.id == ps.groupe_id).first() if ps.groupe_id else None
-                salle = db.query(Salle).filter(Salle.id == ps.salle_id).first()    if ps.salle_id  else None
+                salle = db.query(Salle).filter(Salle.code == ps.salle_id).first()  if ps.salle_id  else None
 
                 conflits.append({
                     "planification_id":   planif.id,

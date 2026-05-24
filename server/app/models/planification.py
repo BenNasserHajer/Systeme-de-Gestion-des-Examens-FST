@@ -94,7 +94,12 @@ class PlanifSalle(Base):
         Integer, ForeignKey("planification_examen.id", ondelete="CASCADE"),
         primary_key=True, nullable=False, index=True,
     )
-    groupe_id: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
+    groupe_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("groupe.id", ondelete="SET NULL"),
+        primary_key=True,
+        nullable=False
+    )
     
     salle_id: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     salle_capacite: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -108,4 +113,6 @@ class PlanifSalle(Base):
 
     # Relations
     planification: Mapped[Planification] = relationship("Planification", back_populates="salles_affectees")
-    # Note: No relationship to Salle model because salle_id is stored as string (room code), not FK
+    groupe: Mapped["Groupe"] = relationship("Groupe", lazy="selectin")
+    # Note: salle relationship is complex because salle_id is a string code, not an integer FK
+    # We'll load it manually in the algorithm if needed

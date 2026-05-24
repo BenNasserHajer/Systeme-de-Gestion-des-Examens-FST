@@ -24,7 +24,7 @@ export function useSurveillance(sessionId: number | null) {
     try {
       const [surveillancesData, chargesData] = await Promise.all([
         getSessionSurveillances(sessionId),
-        getAllSurveillants({ session_id: sessionId }),
+        getAllSurveillants(sessionId),
       ]);
       setItems(surveillancesData.data ?? []);
       const chargeMap: TeacherCharge = {};

@@ -1,136 +1,247 @@
-import type {
-  AffecterSessionResponse,
-  DisponibiliteEnseignant,
-  DisponibiliteEnseignantCreatePayload,
-  EnseignantsDisponiblesResponse,
-  GetAllSurveillantsResponse,
-  GetDisponibilitesResponse,
-  ManualAssignmentBatchRequest,
-  ManualAssignmentRequest,
-  StatistiquesResponse,
-  SurveillanceUpdatePayload,
-} from "@/lib/types/surveillance";
+/**
+ * API client for Surveillance (Proctoring) operations
+ */
 
-import { apiFetch, handleApiResponse } from "@/lib/api/errors";
+import type { GetAllSurveillantsResponse } from "@/lib/types/surveillance";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
 
-type AffecterSessionRequest = {
-  session_id: number;
-  section_nom?: string;
-  periode?: string;
-  type_epreuve?: string;
-};
+// ============================================================================
+// TYPES
+// ============================================================================
 
-type SessionSurveillancesResponse = {
-  session: {
-    id: number;
-    type_session?: string | null;
-    annee_universitaire?: string | null;
-    date_debut?: string | null;
-    date_fin?: string | null;
-    statut?: string | null;
-  };
-  total: number;
-  skip: number;
-  limit: number;
-  data: Array<Record<string, unknown>>;
-};
-
-type RapportSessionResponse = {
-  session: Record<string, unknown>;
-  statistiques: Record<string, unknown>;
-  planifications: Array<Record<string, unknown>>;
-  en_conflit: Array<Record<string, unknown>>;
-  classement_enseignants: Array<Record<string, unknown>>;
-  date_generation: string;
-};
-
-type ConflitsSessionResponse = {
-  session_id: number;
-  total_conflits: number;
-  conflits: Array<Record<string, unknown>>;
-};
-
-type ReassignPayload = {
-  nouvel_enseignant_id: number;
-  motif?: string | null;
-};
-
-type ReassignResponse = {
-  ancienne_surveillance_id: number;
-  ancien_enseignant_id: number;
-  motif?: string | null;
-  nouvelle_surveillance: Record<string, unknown> | null;
-};
-
-type DeleteResponse = {
-  message: string;
+export interface Departement {
   id: number;
-};
-
-type ResetSessionResponse = {
-  session_id: number;
-  surveillances_supprimees: number;
-  message: string;
-};
-
-function buildQuery(params: Record<string, string | number | boolean | null | undefined>) {
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === "") {
-      return;
-    }
-    query.set(key, String(value));
-  });
-  return query.toString();
+  nom: string;
+  code: string;
 }
 
-export async function affecterSession(
-  payload: AffecterSessionRequest,
-): Promise<AffecterSessionResponse> {
+export interface Enseignant {
+  enseignant_id: number;
+  nom: string;
+  prenom: string;
+  grade: string | null;
+  departement: Departement;
+  volume_horaire: number;
+  volume_consomme: number;
+  volume_restant: number;
+  taux_utilisation: number;
+  nb_surveillances: number;
+}
+
+export interface EnseignantDisponible extends Enseignant {
+  avertissements?: string[];
+  est_externe?: boolean;
+}
+
+export interface GroupeResult {
+  groupe: {
+    id: number;
+    numero: string;
+    effectif: number;
+  } | null;
+  salle: {
+    id: number;
+    code: string;
+    capacite: number;
+  } | null;
+  statut: string;
+  surveillants_affectes: Array<{
+    surveillance_id: number;
+    enseignant_id: number;
+    nom: string;
+    prenom: string;
+    grade: string | null;
+    departement: Departement;
+  }>;
+  surveillants_requis: number;
+  manquants: number;
+}
+
+export interface PlanificationResult {
+  planification_id: number;
+  type_epreuve: string;
+  semestre: number;
+  duree: number;
+  statut_planif: string;
+  matiere: {
+    id: number;
+    code: string;
+    intitule: string;
+  } | null;
+  section: {
+    id: number;
+    nom: string;
+  } | null;
+  creneau: {
+    id: number;
+    date: string;
+    heure_debut: string;
+    heure_fin: string;
+  } | null;
+  statut: "AFFECTEE" | "CONFLIT" | "CONFLIT_PARTIEL";
+  surveillants_requis: number;
+  surveillants_affectes: number;
+  manquants: number;
+  groupes: GroupeResult[];
+  raisons_exclusion: Array<{
+    enseignant_id: number;
+    nom: string;
+    prenom: string;
+    raison: string;
+    details: string | null;
+  }>;
+}
+
+export interface AffectationAutomatiqueResponse {
+  session_id: number;
+  session: {
+    id: number;
+    type_session: string;
+    annee_universitaire: string;
+    date_debut: string;
+    date_fin: string;
+    statut: string;
+  } | null;
+  total_planifications: number;
+  affectees_automatiquement: number;
+  en_conflit: number;
+  message: string;
+  resultats: PlanificationResult[];
+  non_affectees: PlanificationResult[];
+}
+
+export interface ManualAssignmentRequest {
+  session_id: number;
+  planification_id: number;
+  groupe_id: number;
+  salle_id: number;
+  enseignant_ids: number[];
+  motifs_externes?: Record<string, string>;
+}
+
+export interface EnseignantsDisponiblesResponse {
+  planification_id: number;
+  date_planification: string;
+  total_disponibles: number;
+  total_avec_avertissement: number;
+  departements: Array<{
+    departement_id: number;
+    departement_nom: string;
+    departement_code: string;
+    total: number;
+    enseignants: EnseignantDisponible[];
+  }>;
+}
+
+// ============================================================================
+// HELPER
+// ============================================================================
+
+async function handleResponse<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ detail: response.statusText }));
+    throw new Error(errorData.detail || `HTTP ${response.status}`);
+  }
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  return response.json();
+}
+
+// ============================================================================
+// AFFECTATION AUTOMATIQUE
+// ============================================================================
+
+/**
+ * Lance l'algorithme d'affectation automatique pour une session
+ */
+export async function affecterSessionAutomatique(
+  sessionId: number,
+  filters?: {
+    section_nom?: string;
+    periode?: string;
+    type_epreuve?: string;
+    save?: boolean;
+  }
+): Promise<AffectationAutomatiqueResponse> {
   const response = await fetch(`${API_BASE}/surveillances/affecter-session`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      session_id: sessionId,
+      ...filters,
+    }),
   });
-  if (!response.ok) {
-    throw new Error("Failed to affecter session");
-  }
-  return response.json();
+  return handleResponse<AffectationAutomatiqueResponse>(response);
 }
 
-export async function manualAssignment(
-  payload: ManualAssignmentRequest,
-): Promise<Record<string, unknown>> {
+// ============================================================================
+// AFFECTATION MANUELLE
+// ============================================================================
+
+/**
+ * Affecte manuellement des enseignants à une planification (résolution de conflit)
+ */
+export async function affecterManuellement(
+  data: ManualAssignmentRequest
+): Promise<any> {
   const response = await fetch(`${API_BASE}/surveillances/manual-assignment`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(data),
   });
-  if (!response.ok) {
-    throw new Error("Failed to assign surveillants");
-  }
-  return response.json();
+  return handleResponse(response);
 }
 
-export async function manualAssignmentBatch(
-  payload: ManualAssignmentBatchRequest,
-): Promise<Record<string, unknown>> {
-  const response = await fetch(`${API_BASE}/surveillances/manual-assignment-batch`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    throw new Error("Failed to assign surveillants batch");
-  }
-  return response.json();
+// ============================================================================
+// CONSULTATION
+// ============================================================================
+
+/**
+ * Récupère la liste des enseignants disponibles pour une planification
+ */
+export async function getEnseignantsDisponibles(
+  planifId: number
+): Promise<EnseignantsDisponiblesResponse> {
+  const response = await fetch(
+    `${API_BASE}/surveillances/enseignants-disponibles/${planifId}`
+  );
+  return handleResponse<EnseignantsDisponiblesResponse>(response);
 }
 
+/**
+ * Récupère tous les enseignants avec leur volume horaire
+ */
+export async function getAllSurveillants(
+  sessionId: number,
+  params?: {
+    page?: number;
+    limit?: number;
+    sort?: string;
+    order?: "asc" | "desc";
+  }
+): Promise<GetAllSurveillantsResponse> {
+  const query = new URLSearchParams({
+    session_id: sessionId.toString(),
+    page: (params?.page || 1).toString(),
+    limit: (params?.limit || 100).toString(),
+    sort: params?.sort || "volume_restant",
+    order: params?.order || "desc",
+  });
+
+  const response = await fetch(
+    `${API_BASE}/surveillances/getallsurveillants?${query}`
+  );
+  return handleResponse(response);
+}
+
+/**
+ * Récupère toutes les surveillances d'une session
+ */
 export async function getSessionSurveillances(
   sessionId: number,
-  filters: {
+  filters?: {
     departement_id?: number;
     groupe_id?: number;
     salle_id?: number;
@@ -141,201 +252,126 @@ export async function getSessionSurveillances(
     semestre?: number;
     skip?: number;
     limit?: number;
-  } = {},
-): Promise<SessionSurveillancesResponse> {
-  const query = buildQuery(filters);
-  const url = query
-    ? `${API_BASE}/surveillances/${sessionId}?${query}`
-    : `${API_BASE}/surveillances/${sessionId}`;
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error("Failed to fetch session surveillances");
   }
-  return response.json();
-}
+): Promise<any> {
+  const query = new URLSearchParams();
+  if (filters) {
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        query.set(key, value.toString());
+      }
+    });
+  }
 
-export async function getSurveillanceDetail(
-  surveillanceId: number,
-): Promise<Record<string, unknown>> {
   const response = await fetch(
-    `${API_BASE}/surveillances/${surveillanceId}/full-details`,
-    { cache: "no-store" },
+    `${API_BASE}/surveillances/${sessionId}${query.toString() ? `?${query}` : ""}`
   );
-  if (!response.ok) {
-    throw new Error("Failed to fetch surveillance detail");
-  }
-  return response.json();
+  return handleResponse(response);
 }
 
-export async function getAllSurveillants(
-  params: {
-    session_id: number;
-    page?: number;
-    limit?: number;
-    sort?: string;
-    order?: "asc" | "desc";
-  },
-): Promise<GetAllSurveillantsResponse> {
-  const query = buildQuery(params);
-  const response = await apiFetch(`${API_BASE}/surveillances/getallsurveillants?${query}`, {
-    cache: "no-store",
-  });
-  return handleApiResponse(response, "Impossible de charger la liste des enseignants");
-}
+// ============================================================================
+// GESTION
+// ============================================================================
 
-export async function getEnseignantsDisponibles(
-  planifId: number,
-): Promise<EnseignantsDisponiblesResponse> {
+/**
+ * Supprime une surveillance
+ */
+export async function deleteSurveillance(surveillanceId: number): Promise<void> {
   const response = await fetch(
-    `${API_BASE}/surveillances/enseignants-disponibles/${planifId}`,
-    { cache: "no-store" },
-  );
-  if (!response.ok) {
-    throw new Error("Failed to fetch enseignants disponibles");
-  }
-  return response.json();
-}
-
-export async function updateSurveillance(
-  surveillanceId: number,
-  payload: SurveillanceUpdatePayload,
-): Promise<Record<string, unknown>> {
-  const response = await fetch(
-    `${API_BASE}/surveillances/edit/${surveillanceId}`,
+    `${API_BASE}/surveillances/${surveillanceId}`,
     {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    },
+      method: "DELETE",
+    }
   );
-  if (!response.ok) {
-    throw new Error("Failed to update surveillance");
-  }
-  return response.json();
+  return handleResponse<void>(response);
 }
 
-export async function reassignSurveillance(
+/**
+ * Remplace un enseignant dans une surveillance
+ */
+export async function remplacerSurveillant(
   surveillanceId: number,
-  payload: ReassignPayload,
-): Promise<ReassignResponse> {
+  nouvelEnseignantId: number,
+  motifExterne?: string
+): Promise<any> {
   const response = await fetch(
     `${API_BASE}/surveillances/${surveillanceId}/reassign`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    },
+      body: JSON.stringify({
+        nouvel_enseignant_id: nouvelEnseignantId,
+        motif_externe: motifExterne,
+      }),
+    }
   );
-  if (!response.ok) {
-    throw new Error("Failed to reassign surveillance");
-  }
-  return response.json();
+  return handleResponse(response);
 }
 
-export async function deleteSurveillance(surveillanceId: number): Promise<DeleteResponse> {
-  const response = await fetch(`${API_BASE}/surveillances/${surveillanceId}`, {
-    method: "DELETE",
-  });
-  if (!response.ok) {
-    throw new Error("Failed to delete surveillance");
-  }
-  return response.json();
-}
+// ============================================================================
+// DISPONIBILITÉS
+// ============================================================================
 
-export async function resetSessionSurveillances(
-  sessionId: number,
-): Promise<ResetSessionResponse> {
-  const response = await fetch(`${API_BASE}/surveillances/session/${sessionId}/reset`, {
-    method: "DELETE",
-  });
-  if (!response.ok) {
-    throw new Error("Failed to reset session surveillances");
-  }
-  return response.json();
-}
-
-export async function getSessionRapport(
-  sessionId: number,
-  departementId?: number,
-): Promise<RapportSessionResponse> {
-  const query = buildQuery({ departement_id: departementId });
-  const url = query
-    ? `${API_BASE}/surveillances/session/${sessionId}/rapport?${query}`
-    : `${API_BASE}/surveillances/session/${sessionId}/rapport`;
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error("Failed to fetch session rapport");
-  }
-  return response.json();
-}
-
-export async function getSessionConflits(
-  sessionId: number,
-  filters: { semestre?: number; type_epreuve?: string; section_nom?: string } = {},
-): Promise<ConflitsSessionResponse> {
-  const query = buildQuery(filters);
-  const url = query
-    ? `${API_BASE}/surveillances/session/${sessionId}/conflits?${query}`
-    : `${API_BASE}/surveillances/session/${sessionId}/conflits`;
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error("Failed to fetch session conflits");
-  }
-  return response.json();
-}
-
-export async function getStatistiques(annee_univ: string): Promise<StatistiquesResponse> {
-  const query = buildQuery({ annee_univ });
-  const response = await fetch(`${API_BASE}/surveillances/statistiques?${query}`, {
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new Error("Failed to fetch statistiques");
-  }
-  return response.json();
-}
-
+/**
+ * Récupère les disponibilités d'un enseignant
+ */
 export async function getEnseignantDisponibilites(
   enseignantId: number,
-  dateDebut: string,
-  dateFin: string,
-): Promise<GetDisponibilitesResponse> {
-  const query = buildQuery({ date_debut: dateDebut, date_fin: dateFin });
-  const response = await fetch(
-    `${API_BASE}/surveillances/enseignant/${enseignantId}/disponibilites?${query}`,
-    { cache: "no-store" },
-  );
-  if (!response.ok) {
-    throw new Error("Failed to fetch disponibilites");
+  params?: {
+    annee_universitaire?: string;
+    date_debut?: string;
+    date_fin?: string;
   }
-  return response.json();
+): Promise<any> {
+  const query = new URLSearchParams();
+  if (params?.annee_universitaire) query.set("annee_universitaire", params.annee_universitaire);
+  if (params?.date_debut) query.set("date_debut", params.date_debut);
+  if (params?.date_fin) query.set("date_fin", params.date_fin);
+
+  const response = await fetch(
+    `${API_BASE}/surveillances/enseignant/${enseignantId}/disponibilites${query.toString() ? `?${query}` : ""}`
+  );
+  return handleResponse(response);
 }
 
-export async function createDisponibilite(
-  payload: DisponibiliteEnseignantCreatePayload,
-): Promise<DisponibiliteEnseignant> {
-  const response = await fetch(`${API_BASE}/surveillances/disponibilites`, {
+/**
+ * Crée une disponibilité pour un enseignant
+ */
+export async function createDisponibilite(data: {
+  enseignant_id: number;
+  date: string;
+  heure_debut: string;
+  heure_fin: string;
+  type_dispo: string;
+  motif?: string | null;
+  confirme?: boolean;
+}): Promise<any> {
+  const response = await fetch(`${API_BASE}/disponibilites`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(data),
   });
-  if (!response.ok) {
-    throw new Error("Failed to create disponibilite");
-  }
-  return response.json();
+  return handleResponse(response);
 }
 
+/**
+ * Récupère toutes les surveillances d'un enseignant
+ */
 export async function getEnseignantSurveillances(
   enseignantId: number,
-  filters: { annee_universitaire?: string; semestre?: number; type_epreuve?: string } = {},
-): Promise<Record<string, unknown>> {
-  const query = buildQuery(filters);
-  const url = query
-    ? `${API_BASE}/surveillances/enseignant/${enseignantId}/toutes-surveillances?${query}`
-    : `${API_BASE}/surveillances/enseignant/${enseignantId}/toutes-surveillances`;
-  const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) {
-    throw new Error("Failed to fetch enseignant surveillances");
+  params?: {
+    annee_universitaire?: string;
+    semestre?: number;
+    type_epreuve?: string;
   }
-  return response.json();
+): Promise<any> {
+  const query = new URLSearchParams();
+  if (params?.annee_universitaire) query.set("annee_universitaire", params.annee_universitaire);
+  if (params?.semestre) query.set("semestre", params.semestre.toString());
+  if (params?.type_epreuve) query.set("type_epreuve", params.type_epreuve);
+
+  const response = await fetch(
+    `${API_BASE}/surveillances/enseignant/${enseignantId}/toutes-surveillances${query.toString() ? `?${query}` : ""}`
+  );
+  return handleResponse(response);
 }

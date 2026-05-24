@@ -161,30 +161,35 @@ def _build_planification_query(
         )
     )
 
-    q = (
-        q.join(SectionMatiere, Planification.section_matiere_id == SectionMatiere.id)
-         .join(Section, SectionMatiere.section_id == Section.id)
-         .filter(Section.nom == section_nom)
-    )
+    # Filtre optionnel sur section_nom
+    if section_nom:
+        q = (
+            q.join(SectionMatiere, Planification.section_matiere_id == SectionMatiere.id)
+             .join(Section, SectionMatiere.section_id == Section.id)
+             .filter(Section.nom == section_nom)
+        )
 
     # periode = "2025/2026-S2" → annee_univ="2025/2026", semestre=2
-    parts = periode.rsplit("-S", 1)
-    if len(parts) == 2:
-        annee_univ = parts[0]
-        try:
-            semestre = int(parts[1])
-            q = q.filter(
-                Planification.semestre == semestre,
-            )
-            # Filtre sur l'année via la session
-            q = (
-                q.join(SessionModel, Planification.session_id == SessionModel.id, isouter=True)
-                 .filter(SessionModel.annee_universitaire == annee_univ)
-            )
-        except ValueError:
-            logger.warning("Période invalide: %s", periode)
+    if periode:
+        parts = periode.rsplit("-S", 1)
+        if len(parts) == 2:
+            annee_univ = parts[0]
+            try:
+                semestre = int(parts[1])
+                q = q.filter(
+                    Planification.semestre == semestre,
+                )
+                # Filtre sur l'année via la session
+                q = (
+                    q.join(SessionModel, Planification.session_id == SessionModel.id, isouter=True)
+                     .filter(SessionModel.annee_universitaire == annee_univ)
+                )
+            except ValueError:
+                logger.warning("Période invalide: %s", periode)
 
-    q = q.filter(Planification.type_epreuve == type_epreuve)
+    # Filtre optionnel sur type_epreuve
+    if type_epreuve:
+        q = q.filter(Planification.type_epreuve == type_epreuve)
 
     q = q.order_by(Creneau.date.asc(), Creneau.heure_debut.asc())
     return q
@@ -213,6 +218,8 @@ class AutomaticAffectationAlgorithm:
         self.db = db
         self._creneau_cache: dict[int, Optional[Creneau]] = {}
         self._affectes_par_creneau: dict[tuple, set[int]] = {}
+        self.dry_run = False
+        
         # ← AJOUT : suivi en mémoire des surveillances créées dans cette exécution
         self._nb_surveillances_session_mem: dict[int, int] = {}
 
@@ -221,9 +228,10 @@ class AutomaticAffectationAlgorithm:
     def affecter_session(
         self,
         session_id:   int,
-        section_nom:  str,
-        periode:      str,
-        type_epreuve: str,
+        section_nom:  Optional[str] = None,
+        periode:      Optional[str] = None,
+        type_epreuve: Optional[str] = None,
+        dry_run:      bool = True,
     ) -> tuple[list[PlanificationAffectationResult], str]:
         """
         Affecter les planifications VALIDEE d'une session.
@@ -234,6 +242,7 @@ class AutomaticAffectationAlgorithm:
             periode:      Année+semestre   (ex: "2025/2026-S1")
             type_epreuve: Type d'épreuve   (ex: "DS" ou "EXAMEN_FINAL")
         """
+        self.dry_run = dry_run
         session = self.db.query(SessionModel).filter(
             SessionModel.id == session_id
         ).first()
@@ -319,7 +328,7 @@ class AutomaticAffectationAlgorithm:
         annee_sem_cible = sm.annee_sem if sm else f"{annee_univ}-S{planif.semestre}"
 
         candidats_base = self._get_enseignants_departement(
-            planif.departement_id, session_id, annee_univ, annee_sem_cible
+            planif.section_departement_id, session_id, annee_univ, annee_sem_cible
         )
 
         creneau_key = (creneau.date, creneau.heure_debut) if creneau else (planif.id,)
@@ -356,15 +365,17 @@ class AutomaticAffectationAlgorithm:
         session_id:     int,
         creneau_key:    tuple,
     ) -> GroupeAffectationResult:
-        grp   = ligne.groupe
-        salle = ligne.salle
+        grp = ligne.groupe
+        # salle is loaded manually since salle_id is a string code
+        from app.models.salle_session import Salle
+        salle = self.db.query(Salle).filter(Salle.code == ligne.salle_id).first()
 
         result = GroupeAffectationResult(
             planification_id=planif.id,
             groupe_id=ligne.groupe_id,
             salle_id=ligne.salle_id,
             groupe_numero=grp.numero if grp else None,
-            salle_code=salle.code if salle else None,
+            salle_code=salle.code if salle else ligne.salle_id,
             statut="AFFECTEE",
             surveillants_requis=planif.nb_surveillants_requis,
         )
@@ -439,7 +450,7 @@ class AutomaticAffectationAlgorithm:
 
         surveillants_inseres = []
         for candidat in selectionnes:
-            surv = self._creer_surveillance(planif, candidat, ligne)
+            surv = self._creer_surveillance(planif, candidat, ligne, salle.id if salle else None)
             surveillants_inseres.append(surv)
             self._affectes_par_creneau[creneau_key].add(candidat.enseignant_id)
             logger.debug(
@@ -483,11 +494,18 @@ class AutomaticAffectationAlgorithm:
         annee_univ:      str,
         annee_sem_cible: str,
     ) -> list[EnseignantCandidat]:
-        departement = self.db.query(Departement).filter(
-            Departement.id == departement_id
-        ).first()
-        dept_nom = departement.nom if departement else "Unknown"
+        # On récupère tous les enseignants qui ont une charge horaire pour l'année
+        charges = {
+            ch.enseignant_id: float(ch.volume_horaire)
+            for ch in self.db.query(ChargeHoraire).filter(
+                ChargeHoraire.annee_univ == annee_univ
+            ).all()
+        }
 
+        if not charges:
+            return []
+
+        # On récupère les enseignants actifs avec le nom de leur département
         enseignants = (
             self.db.query(
                 Enseignant.id,
@@ -495,22 +513,13 @@ class AutomaticAffectationAlgorithm:
                 Enseignant.prenom,
                 Enseignant.grade,
                 Enseignant.departement_id,
+                Departement.nom.label("dept_nom")
             )
-            .join(Enseignement, Enseignement.enseignant_id == Enseignant.id)
-            .filter(
-                Enseignant.departement_id == departement_id,
-                Enseignement.annee_sem    == annee_sem_cible,
-            )
+            .outerjoin(Departement, Departement.id == Enseignant.departement_id)
+            .filter(Enseignant.id.in_(list(charges.keys())))
             .distinct()
             .all()
         )
-
-        charges = {
-            ch.enseignant_id: float(ch.volume_horaire)
-            for ch in self.db.query(ChargeHoraire).filter(
-                ChargeHoraire.annee_univ == annee_univ
-            ).all()
-        }
 
         rows_session = (
             self.db.query(
@@ -530,19 +539,20 @@ class AutomaticAffectationAlgorithm:
         candidats = []
         for ens in enseignants:
             vol = charges.get(ens.id, 0.0)
+            is_meme = (ens.departement_id == departement_id)
             candidats.append(EnseignantCandidat(
                 enseignant_id=ens.id,
                 nom=ens.nom,
                 prenom=ens.prenom,
                 grade=ens.grade,
                 departement_id=ens.departement_id or 0,
-                departement_nom=dept_nom,
+                departement_nom=ens.dept_nom or "Unknown",
                 volume_horaire=vol,
                 volume_restant=0.0,
                 volume_consomme=0.0,
                 nb_surveillances=0,
                 nb_surveillances_session=nb_session_map.get(ens.id, 0),
-                meme_departement=True,
+                meme_departement=is_meme,
             ))
         return candidats
 
@@ -655,19 +665,48 @@ class AutomaticAffectationAlgorithm:
         planif:   Planification,
         candidat: EnseignantCandidat,
         ligne:    PlanifSalle,
+        salle_id_int: Optional[int] = None,
     ) -> Surveillance:
         payload = SurveillanceCreate(
             planification_id=planif.id,
             enseignant_id=candidat.enseignant_id,
             groupe_id=ligne.groupe_id,
-            salle_id=ligne.salle_id,
+            salle_id=salle_id_int,
             charge=round(planif.duree / 60, 2),
             mode_affectation=ModeAffectation.AUTOMATIQUE,
             statut_surveillance=StatutSurveillance.AFFECTE,
             est_externe=False,
             motif_externe=None,
         )
-        surv = create_surveillance(self.db, payload)
+        if self.dry_run:
+            from app.models.surveillance import Surveillance
+            fake_id = getattr(self, '_fake_id', 0) - 1
+            self._fake_id = fake_id
+            
+            s = Surveillance(
+                id=fake_id,
+                planification_id=payload.planification_id,
+                enseignant_id=payload.enseignant_id,
+                groupe_id=payload.groupe_id,
+                salle_id=payload.salle_id,
+                charge=payload.charge,
+                mode_affectation="AUTOMATIQUE",
+                statut_surveillance="AFFECTE",
+                est_externe=False,
+                motif_externe=None,
+                presence=False
+            )
+            # Inject fake properties for router _build_result
+            setattr(s, "_fake_nom", candidat.nom)
+            setattr(s, "_fake_prenom", candidat.prenom)
+            setattr(s, "_fake_grade", candidat.grade)
+            setattr(s, "_fake_dept_nom", candidat.departement_nom)
+            setattr(s, "groupe", None) 
+            setattr(s, "salle", None)
+            surv = s
+        else:
+            from app.crud.crud_surv import create_surveillance
+            surv = create_surveillance(self.db, payload)
 
         # ← AJOUT : incrémenter le compteur en mémoire immédiatement
         eid = candidat.enseignant_id

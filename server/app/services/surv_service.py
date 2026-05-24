@@ -109,6 +109,7 @@ class SurvService:
         section_nom:  Optional[str] = None,
         periode:      Optional[str] = None,
         type_epreuve: Optional[str] = None,
+        dry_run:      bool = True,
     ):
         """
         Lance l'algorithme v3 avec filtres optionnels.
@@ -118,12 +119,14 @@ class SurvService:
             section_nom:  Ex: "IGL3" ou "INF/IOT"
             periode:      Ex: "2025/2026-S1" ou "2025/2026-S2"
             type_epreuve: "DS" ou "EXAMEN_FINAL"
+            dry_run:      True pour simuler sans persister
         """
         return self.algorithm.affecter_session(
             session_id=session_id,
             section_nom=section_nom,
             periode=periode,
             type_epreuve=type_epreuve,
+            dry_run=dry_run,
         )
 
     # ── Affectation manuelle — planif unique ──────────────────────────────────

@@ -102,6 +102,7 @@ class AffecterSessionRequest(BaseModel):
     section_nom:  Optional[str] = None
     periode:      Optional[str] = None
     type_epreuve: Optional[str] = None
+    save:         bool = False
 
 
 # ─────────────────────────────────────────────────────────────
