@@ -107,21 +107,21 @@ async def health_check(db: Session = Depends(get_db)) -> dict[str, Any]:
         "status": "ok" if is_db_connected else "degraded",
         "database": "connected" if is_db_connected else "disconnected",
         "timestamp": datetime.now().isoformat(),
-        "server": {
-            "host": settings.backend_host,
-            "port": settings.backend_port,
+        "app": {
+            "name": settings.app_name,
+            "version": settings.app_version,
         },
     }
 
 # Lancement direct
 if __name__ == "__main__":
     print(f" Starting {settings.app_name} v{settings.app_version}")
-    print(f" Server: http://{settings.backend_host}:{settings.backend_port}")
-    print(f" API Docs: http://{settings.backend_host}:{settings.backend_port}/docs")
+    print(f" Server: http://localhost:8000")
+    print(f" API Docs: http://localhost:8000/docs")
     
     uvicorn.run(
         "main:app",
-        host=settings.backend_host,
-        port=settings.backend_port,
+        host="0.0.0.0",
+        port=8000,
         reload=True,
     )

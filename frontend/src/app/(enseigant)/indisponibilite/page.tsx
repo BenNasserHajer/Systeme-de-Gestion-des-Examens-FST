@@ -208,6 +208,31 @@ export default function IndisponibilitePage() {
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 28 }}>
+          {/* Navigation Links */}
+          <div style={{ display: "flex", gap: "24px", marginRight: "32px" }}>
+            <a href="/convocation" style={{
+              textDecoration: "none",
+              color: "#64748b",
+              fontWeight: 500,
+              fontSize: "15px",
+              paddingBottom: "4px",
+              borderBottom: "2px solid transparent",
+              transition: "all 0.2s"
+            }} onMouseEnter={(e) => e.currentTarget.style.color = "#4f46e5"}
+               onMouseLeave={(e) => e.currentTarget.style.color = "#64748b"}>
+              Mes Convocations
+            </a>
+            <a href="/indisponibilite" style={{
+              textDecoration: "none",
+              color: "#4f46e5",
+              fontWeight: 600,
+              fontSize: "15px",
+              paddingBottom: "4px",
+              borderBottom: "2px solid #4f46e5"
+            }}>
+              Mes Indisponibilités
+            </a>
+          </div>
           {user && (
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 14, fontWeight: 600, color: "#1e293b" }}>{user.prenom} {user.nom}</div>

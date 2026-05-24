@@ -31,6 +31,8 @@ const ADMIN_ONLY_ROUTES = [
 // Routes réservées aux ENSEIGNANT uniquement
 const ENSEIGNANT_ONLY_ROUTES = [
   "/enseignant",
+  "/indisponibilite",
+  "/convocation",
 ];
 
 export function middleware(request: NextRequest) {
@@ -49,33 +51,33 @@ export function middleware(request: NextRequest) {
 
   // Pas de token → redirect login
   if (!token) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   // Token illisible → redirect login
   const payload = parseJwtPayload(token);
   if (!payload) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/login", request.url));
   }
 
   // Token expiré → redirect login + supprime le cookie
   const exp = payload.exp as number | undefined;
   if (exp && Date.now() / 1000 > exp) {
-    const res = NextResponse.redirect(new URL("/", request.url));
+    const res = NextResponse.redirect(new URL("/login", request.url));
     res.cookies.delete("access_token");
     return res;
   }
 
   const type = payload.type as string;
 
-  // ENSEIGNANT essaie d'accéder à une route admin → redirect login
+  // ENSEIGNANT essaie d'accéder à une route admin → redirect indisponibilite
   if (isAdminRoute && type !== "ADMIN") {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/convocation", request.url));
   }
 
-  // ADMIN essaie d'accéder à une route enseignant → redirect login
+  // ADMIN essaie d'accéder à une route enseignant → redirect planification
   if (isEnseignantRoute && type !== "ENSEIGNANT") {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/planification", request.url));
   }
 
   // Tout est OK → laisser passer
@@ -90,5 +92,7 @@ export const config = {
     "/planification/:path*",
     "/surveillance/:path*",
     "/salles/:path*",
+    "/indisponibilite/:path*",
+    "/convocation/:path*",
   ],
 };
