@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { ChargeSummaryCards, ChargeTable } from "@/components/surveillance/ChargeTable";
@@ -10,6 +10,20 @@ import type { CatalogueSession } from "@/lib/api/referentiel";
 import { useTeacherCharge } from "@/hooks/useTeacherCharge";
 
 export default function ChargePage() {
+  return (
+    <Suspense
+      fallback={
+        <Layout title="Tableau des charges" subtitle="Charge de surveillance et volume annuel par enseignant">
+          <p className="text-sm text-slate-600">Chargement...</p>
+        </Layout>
+      }
+    >
+      <ChargePageContent />
+    </Suspense>
+  );
+}
+
+function ChargePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionParam = searchParams.get("sessionId") ?? searchParams.get("session_id");

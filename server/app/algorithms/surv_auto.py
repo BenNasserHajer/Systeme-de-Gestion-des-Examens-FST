@@ -327,8 +327,9 @@ class AutomaticAffectationAlgorithm:
 
         annee_sem_cible = sm.annee_sem if sm else f"{annee_univ}-S{planif.semestre}"
 
+        dept_id = planif.section_departement_id or 1
         candidats_base = self._get_enseignants_departement(
-            planif.section_departement_id, session_id, annee_univ, annee_sem_cible
+            dept_id, session_id, annee_univ, annee_sem_cible
         )
 
         creneau_key = (creneau.date, creneau.heure_debut) if creneau else (planif.id,)

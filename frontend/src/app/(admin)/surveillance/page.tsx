@@ -5,7 +5,8 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 import { getCatalogue, type Catalogue } from "@/lib/api/referentiel";
-import { getAllSurveillants, type GetAllSurveillantsResponse } from "@/lib/api/surveillance";
+import { getAllSurveillants } from "@/lib/api/surveillance";
+import type { GetAllSurveillantsResponse } from "@/lib/types/surveillance";
 import { useConvocation } from "@/hooks/useConvocation";
 import { usePDFExport } from "@/hooks/usePDFExport";
 

@@ -595,7 +595,7 @@ def get_all_surveillants(
 @router.get("/{session_id}")
 def get_session_surveillances(
     session_id:     int,
-    departement_id: Optional[int] = Query(None),
+    departement_id: Optional[int] = Query(1, description="Département Informatique par défaut"),
     groupe_id:      Optional[int] = Query(None),
     salle_id:       Optional[int] = Query(None),
     type_epreuve:   Optional[str] = Query(None),
@@ -928,7 +928,7 @@ def reset_session_surveillances(session_id: int, db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/session/{session_id}/rapport")
-def get_rapport_session(session_id: int, departement_id: Optional[int] = Query(None), db: Session = Depends(get_db)):
+def get_rapport_session(session_id: int, departement_id: Optional[int] = Query(1), db: Session = Depends(get_db)):
     """
     Génère un rapport complet d'une session d'examens.
 
