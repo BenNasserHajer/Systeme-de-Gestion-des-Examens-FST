@@ -80,7 +80,7 @@ async def startup_event() -> None:
         connected = check_connection(db)
         status = "connected" if connected else "disconnected"
         print(f"[startup] database: {status}")
-        print(f"[startup] server: http://{settings.backend_host}:{settings.backend_port}")
+        print(f"[startup] app: {settings.app_name} v{settings.app_version}")
         print(f"[startup] CORS allowed: {_cors_origins}")
     finally:
         db.close()
