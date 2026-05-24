@@ -42,11 +42,24 @@ class PlanifSalleAssign(PlanifSalleBase):
 
 
 class PlanifSalleOut(PlanifSalleBase):
-    id: int
+    id: int | None = None
     creneau_date: date
     heure_debut: time
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class GenerationSimpleRequest(BaseModel):
+    """Simplified generation payload from admin form (section, session, type, niveau)."""
+
+    session_id: int = Field(ge=1)
+    section_label: str = Field(min_length=1, max_length=120)
+    niveau: str = Field(min_length=1, max_length=20)
+    type_epreuve_label: str = Field(min_length=1, max_length=40)
+
+
+class ValiderSessionRequest(BaseModel):
+    section_id: int | None = Field(default=None, ge=1)
 
 
 class PlanificationBase(BaseModel):
@@ -55,6 +68,7 @@ class PlanificationBase(BaseModel):
     section_matiere_id: int = Field(ge=1)
     section_departement_id: int | None = Field(default=None, ge=1)
     matiere: str = Field(min_length=2, max_length=120)
+    semestre: str = Field(default="S1", min_length=1, max_length=10)
 
     type_epreuve: TypeEpreuve = TypeEpreuve.EXAMEN_FINAL
     mode_affectation: ModeAffectation = ModeAffectation.MANUEL
@@ -157,6 +171,72 @@ class GenerationResult(BaseModel):
     nb_crees: int
     nb_conflits: int
     conflits: list[str]
+
+
+class GenerationAutoRequest(BaseModel):
+    section_id: int = Field(ge=1)
+    session_id: int = Field(ge=1)
+    type_epreuve: TypeEpreuve
+    semestre: str = Field(default="S1", pattern=r"^S[12]$")
+
+
+class ConflitDetail(BaseModel):
+    matiere: str = ""
+    contrainte: str = "C?"
+    message: str
+    suggestion: str = ""
+
+
+class GenerationAutoResponse(BaseModel):
+    success: bool
+    nb_crees: int
+    nb_conflits: int
+    planifications: list["PlanificationOut"] = Field(default_factory=list)
+    conflits: list[ConflitDetail | str] = Field(default_factory=list)
+
+
+class DeplacerRequest(BaseModel):
+    nouvelle_date: date
+    nouvelle_heure_debut: time
+    nouvelle_heure_fin: time
+
+
+class DeplacerResponse(BaseModel):
+    success: bool
+    planification: "PlanificationOut"
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ChangerSalleRequest(BaseModel):
+    groupe_id: int = Field(default=1, ge=1)
+    nouvelle_salle_id: str = Field(min_length=1, max_length=80)
+
+
+class ChangerSalleResponse(BaseModel):
+    success: bool
+    planification: "PlanificationOut"
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ValiderSessionWorkflowRequest(BaseModel):
+    session_id: int = Field(ge=1)
+    section_id: int | None = Field(default=None, ge=1)
+
+
+class ValiderSessionResponse(BaseModel):
+    success: bool
+    nb_planifications: int
+    statut: StatutPlanification
+    planifications: list["PlanificationOut"] = Field(default_factory=list)
+    erreurs: list[str] = Field(default_factory=list)
+
+
+class SalleDisponibleOut(BaseModel):
+    salle_id: str
+    capacite: int = Field(ge=1)
+    batiment: str | None = None
+    disponible: bool = True
+    motif_indisponible: str | None = None
 
 
 PlanificationRead = PlanificationOut

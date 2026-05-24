@@ -21,5 +21,8 @@ class Settings:
     database_max_overflow: int = int(os.getenv("DATABASE_MAX_OVERFLOW", "20"))
     database_echo: bool = os.getenv("DATABASE_ECHO", "False").lower() == "true"
 
+    # Max exams scheduled for one section on the same calendar day (default: 2).
+    max_examens_par_jour_section: int = int(os.getenv("MAX_EXAMENS_PAR_JOUR_SECTION", "2"))
+
 
 settings = Settings()

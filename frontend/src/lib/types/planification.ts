@@ -4,7 +4,7 @@ export type StatutPlanification = "BROUILLON" | "VALIDEE" | "PUBLIEE";
 export type StatutSession = "BROUILLON" | "VALIDEE" | "PUBLIEE";
 
 export type PlanifSalle = {
-  id: number;
+  id?: number | null;
   salle_id: string;
   salle_capacite: number;
   salle_batiment: string | null;
@@ -22,6 +22,7 @@ export type Planification = {
   section_matiere_id: number;
   section_departement_id: number | null;
   matiere: string;
+  semestre: string;
   type_epreuve: TypeEpreuve;
   mode_affectation: ModeAffectation;
   statut: StatutPlanification;
@@ -36,9 +37,12 @@ export type Planification = {
   section_nb_etudiants: number;
   nb_groupes: number;
   nb_surveillants_requis: number;
+  a_examen_final: boolean;
+  a_ds: boolean;
   created_at: string;
   updated_at: string;
   salles: PlanifSalle[];
+  has_conflict?: boolean;
 };
 
 export type PlanifSalleAssign = {
@@ -56,6 +60,7 @@ export type PlanificationCreatePayload = {
   section_matiere_id: number;
   section_departement_id?: number | null;
   matiere: string;
+  semestre?: string;
   type_epreuve: TypeEpreuve;
   mode_affectation?: ModeAffectation;
   statut?: StatutPlanification;
@@ -83,4 +88,34 @@ export type PlanificationUpdatePayload = {
   nb_groupes?: number;
   nb_surveillants_requis?: number;
   salles?: PlanifSalleAssign[];
+};
+
+export type ConflitDetail = {
+  matiere?: string;
+  contrainte?: string;
+  message: string;
+  suggestion?: string;
+};
+
+export type GenerationAutoResponse = {
+  success: boolean;
+  nb_crees: number;
+  nb_conflits: number;
+  planifications: Planification[];
+  conflits: (ConflitDetail | string)[];
+};
+
+export type ValiderSessionResponse = {
+  success: boolean;
+  nb_planifications: number;
+  statut: StatutPlanification;
+  planifications: Planification[];
+  erreurs: string[];
+};
+
+export type GenerationParams = {
+  section_id: number;
+  session_id: number;
+  type_epreuve: TypeEpreuve;
+  semestre: "S1" | "S2";
 };

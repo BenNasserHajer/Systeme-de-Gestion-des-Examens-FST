@@ -5,7 +5,9 @@ from datetime import date, time
 from sqlalchemy.orm import Session, selectinload
 
 from app.models.planification import PlanifSalle, Planification
+from app.models.salle_session import Creneau
 from app.schemas.planification import PlanifSalleAssign, PlanificationCreate, PlanificationUpdate
+from app.services.catalogue_service import SAMPLE_SALLES, list_salles_referentiel
 
 
 def _query_planification_base(db: Session):
@@ -51,6 +53,54 @@ def list_existing_for_session(db: Session, session_id: int) -> list[Planificatio
     return _query_planification_base(db).filter(Planification.session_id == session_id).all()
 
 
+def _find_or_create_creneau(
+    db: Session,
+    date_examen: date,
+    heure_debut: time,
+    heure_fin: time,
+) -> int:
+    """
+    Find existing creneau by (date, heure_debut) — matches DB unique key — or create one.
+    Updates heure_fin when an existing row is reused.
+    """
+    existing = (
+        db.query(Creneau)
+        .filter(
+            Creneau.date == date_examen,
+            Creneau.heure_debut == heure_debut,
+        )
+        .first()
+    )
+
+    if existing:
+        if existing.heure_fin != heure_fin:
+            existing.heure_fin = heure_fin
+            db.flush()
+        return existing.id
+
+    new_creneau = Creneau(
+        date=date_examen,
+        heure_debut=heure_debut,
+        heure_fin=heure_fin,
+        libelle=None,
+    )
+    db.add(new_creneau)
+    db.flush()
+    return new_creneau.id
+
+
+def ensure_planif_creneau(db: Session, planif: Planification) -> None:
+    """Backfill creneau_id when missing (legacy rows or validate-only updates)."""
+    if planif.creneau_id is not None:
+        return
+    planif.creneau_id = _find_or_create_creneau(
+        db,
+        planif.date_examen,
+        planif.heure_debut,
+        planif.heure_fin,
+    )
+
+
 def _build_planif_salle_rows(
     planif: Planification,
     salles: list[PlanifSalleAssign],
@@ -72,6 +122,17 @@ def _build_planif_salle_rows(
 
 
 def create_planification(db: Session, payload: PlanificationCreate) -> Planification:
+    # Convert semestre string to integer (S1 -> 1, S2 -> 2)
+    semestre_int = 1 if payload.semestre.upper() in ("S1", "1") else 2
+    
+    # Find or create matching creneau
+    creneau_id = _find_or_create_creneau(
+        db,
+        payload.date_examen,
+        payload.heure_debut,
+        payload.heure_fin,
+    )
+    
     db_item = Planification(
         session_id=payload.session_id,
         section_id=payload.section_id,
@@ -79,6 +140,8 @@ def create_planification(db: Session, payload: PlanificationCreate) -> Planifica
         section_departement_id=payload.section_departement_id,
         matiere=payload.matiere,
         type_epreuve=payload.type_epreuve.value,
+        semestre=semestre_int,
+        creneau_id=creneau_id,  # Set the creneau_id
         date_examen=payload.date_examen,
         heure_debut=payload.heure_debut,
         heure_fin=payload.heure_fin,
@@ -92,6 +155,8 @@ def create_planification(db: Session, payload: PlanificationCreate) -> Planifica
         statut=payload.statut.value,
         nb_groupes=payload.nb_groupes,
         nb_surveillants_requis=payload.nb_surveillants_requis,
+        a_examen_final=payload.a_examen_final,
+        a_ds=payload.a_ds,
     )
     db.add(db_item)
     db.flush()
@@ -105,6 +170,15 @@ def create_planification(db: Session, payload: PlanificationCreate) -> Planifica
 
 
 def update_planification(db: Session, planif: Planification, payload: PlanificationUpdate) -> Planification:
+    if payload.date_examen is not None or payload.heure_debut is not None or payload.heure_fin is not None:
+        new_date = payload.date_examen if payload.date_examen is not None else planif.date_examen
+        new_heure_debut = payload.heure_debut if payload.heure_debut is not None else planif.heure_debut
+        new_heure_fin = payload.heure_fin if payload.heure_fin is not None else planif.heure_fin
+
+        planif.creneau_id = _find_or_create_creneau(db, new_date, new_heure_debut, new_heure_fin)
+    else:
+        ensure_planif_creneau(db, planif)
+    
     if payload.date_examen is not None:
         planif.date_examen = payload.date_examen
     if payload.heure_debut is not None:
@@ -178,17 +252,66 @@ def get_salles_disponibles(
     *,
     date_examen: date,
     heure_debut: time,
-    capacite_min: int,
-) -> list[str]:
-    # With no referentiel table yet, expose already-known room ids that are not occupied.
-    occupied = {
-        row.salle_id
-        for row in db.query(PlanifSalle)
-        .filter(PlanifSalle.creneau_date == date_examen, PlanifSalle.heure_debut == heure_debut)
-        .all()
-    }
-    known_rooms = {
-        row.salle_id
-        for row in db.query(PlanifSalle).filter(PlanifSalle.salle_capacite >= capacite_min).all()
-    }
-    return sorted(list(known_rooms - occupied))
+    capacite_min: int = 1,
+    exclude_planif_id: int | None = None,
+    toutes_les_salles: bool = True,
+) -> list[dict[str, object]]:
+    """
+    Liste les salles du referentiel avec statut de disponibilite sur le creneau.
+    Si toutes_les_salles=True, retourne aussi les salles occupees (disponible=False).
+    capacite_min ne filtre que lorsque toutes_les_salles=False.
+    """
+    all_salles = list_salles_referentiel(db)
+    if not all_salles:
+        all_salles = list(SAMPLE_SALLES)
+
+    occupied_query = db.query(PlanifSalle.salle_id).filter(
+        PlanifSalle.creneau_date == date_examen,
+        PlanifSalle.heure_debut == heure_debut,
+    )
+    if exclude_planif_id is not None:
+        occupied_query = occupied_query.filter(
+            PlanifSalle.planification_id != exclude_planif_id,
+        )
+    occupied = {row[0] for row in occupied_query.distinct().all()}
+
+    result: list[dict[str, object]] = []
+    for salle in all_salles:
+        capacite = int(salle.get("capacite", 0))
+        salle_id = str(salle["salle_id"])
+        is_occupied = salle_id in occupied
+        libre = not is_occupied
+
+        if not toutes_les_salles:
+            if not libre or capacite < capacite_min:
+                continue
+        elif not libre:
+            result.append(
+                {
+                    "salle_id": salle_id,
+                    "capacite": capacite,
+                    "batiment": salle.get("batiment") or None,
+                    "disponible": False,
+                    "motif_indisponible": "Occupee sur ce creneau",
+                }
+            )
+            continue
+
+        result.append(
+            {
+                "salle_id": salle_id,
+                "capacite": capacite,
+                "batiment": salle.get("batiment") or None,
+                "disponible": True,
+                "motif_indisponible": None,
+            }
+        )
+
+    result.sort(
+        key=lambda item: (
+            0 if item.get("disponible") else 1,
+            -int(item["capacite"]),
+            str(item["salle_id"]),
+        )
+    )
+    return result
