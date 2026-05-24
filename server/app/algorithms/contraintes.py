@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.models.planification import Planification
 from app.schemas.planification import PlanificationCreate, TypeEpreuve
 
@@ -111,19 +112,28 @@ class ContrainteSectionUnique(Contrainte):
         return "C7/C14: une section ne peut pas avoir deux epreuves sur le meme creneau."
 
 
+def _type_epreuve_value(value: object) -> str:
+    if hasattr(value, "value"):
+        return str(getattr(value, "value"))
+    return str(value)
+
+
 class ContrainteSectionMatiereUnique(Contrainte):
     """C6/C12: one planification per (section_matiere, session, type)."""
 
     def verifier(self, planif: PlanificationCreate, contexte: dict, db: Session) -> bool:
-        existing: list[Planification] = contexte.get("existing_planifs", [])
         excluded_id = contexte.get("exclude_planif_id")
+        if excluded_id is not None:
+            # Creation-only rule; updates/deplacements keep the same section_matiere.
+            return True
+
+        existing: list[Planification] = contexte.get("existing_planifs", [])
+        target_type = _type_epreuve_value(planif.type_epreuve)
         for other in existing:
-            if excluded_id is not None and other.id == excluded_id:
-                continue
             if (
                 other.section_matiere_id == planif.section_matiere_id
                 and other.session_id == planif.session_id
-                and other.type_epreuve == planif.type_epreuve.value
+                and _type_epreuve_value(other.type_epreuve) == target_type
             ):
                 return False
         return True
@@ -260,6 +270,41 @@ class ContrainteEquilibrageGroupes(Contrainte):
         return "C9 (souple): groupes non equilibres, ecart > 1 etudiant."
 
 
+class ContrainteMaxExamensParJour(Contrainte):
+    """C10b: at most N exams per section per calendar day (default 2)."""
+
+    def __init__(
+        self,
+        priorite: int = 1,
+        active: bool = True,
+        dure: bool = True,
+        max_par_jour: int | None = None,
+    ) -> None:
+        super().__init__(priorite, active, dure)
+        self.max_par_jour = max_par_jour if max_par_jour is not None else settings.max_examens_par_jour_section
+
+    def verifier(self, planif: PlanificationCreate, contexte: dict, db: Session) -> bool:
+        max_par_jour = int(contexte.get("max_examens_par_jour", self.max_par_jour))
+        if max_par_jour <= 0:
+            return True
+
+        existing: list[Planification] = contexte.get("existing_planifs", [])
+        excluded_id = contexte.get("exclude_planif_id")
+        count = 0
+        for other in existing:
+            if excluded_id is not None and other.id == excluded_id:
+                continue
+            if other.section_id == planif.section_id and other.date_examen == planif.date_examen:
+                count += 1
+        return count < max_par_jour
+
+    def get_message(self) -> str:
+        return (
+            f"Cette section a deja {self.max_par_jour} examens ce jour-la "
+            f"(maximum autorise: {self.max_par_jour} par jour)."
+        )
+
+
 class ContrainteEspacementExamens(Contrainte):
     """C10 soft preference: avoid consecutive slots the same day for a section."""
 
@@ -336,6 +381,7 @@ def build_default_engine() -> ContrainteEngine:
             ContrainteCreneauSession(priorite=1, dure=True),
             ContraintePasDimanche(priorite=1, dure=True),
             ContrainteSectionUnique(priorite=1, dure=True),
+            ContrainteMaxExamensParJour(priorite=1, dure=True),
             ContrainteSectionMatiereUnique(priorite=1, dure=True),
             ContrainteDecoupageObligatoire(priorite=1, dure=True),
             ContrainteMatiereEligible(priorite=1, dure=True),

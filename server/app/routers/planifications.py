@@ -130,7 +130,9 @@ def get_planification(planif_id: int, db: Session = Depends(get_db)) -> Planific
 
 
 @router.post("/planifications", response_model=PlanificationOut, status_code=status.HTTP_201_CREATED)
+@router.post("/planifications/", response_model=PlanificationOut, status_code=status.HTTP_201_CREATED)
 @router.post("/planification_examen", response_model=PlanificationOut, status_code=status.HTTP_201_CREATED, deprecated=True)
+@router.post("/planification_examen/", response_model=PlanificationOut, status_code=status.HTTP_201_CREATED, deprecated=True)
 def create_planification(
     payload: PlanificationCreate,
     db: Session = Depends(get_db),

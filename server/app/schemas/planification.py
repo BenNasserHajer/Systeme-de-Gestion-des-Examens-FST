@@ -173,4 +173,70 @@ class GenerationResult(BaseModel):
     conflits: list[str]
 
 
+class GenerationAutoRequest(BaseModel):
+    section_id: int = Field(ge=1)
+    session_id: int = Field(ge=1)
+    type_epreuve: TypeEpreuve
+    semestre: str = Field(default="S1", pattern=r"^S[12]$")
+
+
+class ConflitDetail(BaseModel):
+    matiere: str = ""
+    contrainte: str = "C?"
+    message: str
+    suggestion: str = ""
+
+
+class GenerationAutoResponse(BaseModel):
+    success: bool
+    nb_crees: int
+    nb_conflits: int
+    planifications: list["PlanificationOut"] = Field(default_factory=list)
+    conflits: list[ConflitDetail | str] = Field(default_factory=list)
+
+
+class DeplacerRequest(BaseModel):
+    nouvelle_date: date
+    nouvelle_heure_debut: time
+    nouvelle_heure_fin: time
+
+
+class DeplacerResponse(BaseModel):
+    success: bool
+    planification: "PlanificationOut"
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ChangerSalleRequest(BaseModel):
+    groupe_id: int = Field(default=1, ge=1)
+    nouvelle_salle_id: str = Field(min_length=1, max_length=80)
+
+
+class ChangerSalleResponse(BaseModel):
+    success: bool
+    planification: "PlanificationOut"
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ValiderSessionWorkflowRequest(BaseModel):
+    session_id: int = Field(ge=1)
+    section_id: int | None = Field(default=None, ge=1)
+
+
+class ValiderSessionResponse(BaseModel):
+    success: bool
+    nb_planifications: int
+    statut: StatutPlanification
+    planifications: list["PlanificationOut"] = Field(default_factory=list)
+    erreurs: list[str] = Field(default_factory=list)
+
+
+class SalleDisponibleOut(BaseModel):
+    salle_id: str
+    capacite: int = Field(ge=1)
+    batiment: str | None = None
+    disponible: bool = True
+    motif_indisponible: str | None = None
+
+
 PlanificationRead = PlanificationOut

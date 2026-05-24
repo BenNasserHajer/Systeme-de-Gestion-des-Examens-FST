@@ -4,7 +4,7 @@ planif_auto.py
 Automatic exam-planification algorithm (best effort).
 
 Implemented constraints:
-  Hard : C1 C2 C3 C4 C6 C7 C8 C11 C12 C14 C15 C16 C17 C18
+  Hard : C1 C2 C3 C4 C6 C7 C8 C10b C11 C12 C14 C15 C16 C17 C18
   Soft : C5 C9 C10 C13
 
 The engine keeps generating other subjects even if one subject fails.
@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.algorithms.contraintes import ContrainteEngine
 from app.models.planification import Planification
+from app.config import settings
 from app.schemas.planification import (
     GenerationRequest,
     GenerationResult,
@@ -498,6 +499,12 @@ class Planificateur:
                 continue
 
             if not self.contexte.section_est_libre(sm.section_id, creneau):
+                continue
+
+            if (
+                self.contexte.nb_examens_section_jour(sm.section_id, creneau.date)
+                >= settings.max_examens_par_jour_section
+            ):
                 continue
 
             groupes = calculer_groupes(sm.section.nb_etudiants, creneau, self.contexte)

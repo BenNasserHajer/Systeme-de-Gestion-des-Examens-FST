@@ -5,9 +5,10 @@ from datetime import date
 from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
-from app.algorithms.contraintes import build_default_engine
+from app.algorithms.contraintes import _type_epreuve_value, build_default_engine
 from app.algorithms.planif_auto import generer
 from app.crud.crud_planif import (
+    ensure_planif_creneau,
     create_planification,
     delete_planification,
     get_emploi_du_temps_filtre,
@@ -31,7 +32,11 @@ from app.schemas.planification import (
     StatutSession,
     TypeEpreuve,
 )
-from app.services.catalogue_service import build_generation_request, load_catalogue
+from app.config import settings
+from app.services.catalogue_service import (
+    build_generation_request_by_section,
+    load_catalogue,
+)
 
 
 class ConstraintViolationError(ValueError):
@@ -89,6 +94,7 @@ class PlanifService:
             {
                 "existing_planifs": existing,
                 "exclude_planif_id": exclude_planif_id,
+                "max_examens_par_jour": settings.max_examens_par_jour_section,
                 "known_section_matiere_ids": None,
                 "section_departement_id": payload.section_departement_id,
             },
@@ -180,24 +186,25 @@ class PlanifService:
         planif = self.get_by_id(planif_id)
         delete_planification(self.db, planif)
 
-    def generer_from_form(
+    def generer_auto(
         self,
         *,
+        section_id: int,
         session_id: int,
-        section_label: str,
-        niveau: str,
-        type_epreuve_label: str,
-    ) -> GenerationResult:
+        type_epreuve: str,
+        semestre: str,
+    ) -> tuple[GenerationResult, list[Planification]]:
         catalogue = load_catalogue(self.db)
-        raw = build_generation_request(
+        raw = build_generation_request_by_section(
             catalogue,
             session_id=session_id,
-            section_label=section_label,
-            type_epreuve_label=type_epreuve_label,
-            niveau=niveau,
+            section_id=section_id,
+            type_epreuve=type_epreuve,
+            semestre=semestre,
         )
         request = GenerationRequest(
             session_id=raw["session_id"],
+            semestre=raw["semestre"],
             session_date_debut=raw["session_date_debut"],
             session_date_fin=raw["session_date_fin"],
             session_statut=StatutSession(raw["session_statut"]),
@@ -207,10 +214,124 @@ class PlanifService:
             creneaux=[GenerationCreneau(**c) for c in raw["creneaux"]],
             salles=[GenerationSalle(**s) for s in raw["salles"]],
         )
-        return self.generer_planifications(request)
+        return self._generer_and_fetch(request, section_id=section_id)
+
+    def generer_from_form(
+        self,
+        *,
+        session_id: int,
+        section_label: str,
+        niveau: str,
+        type_epreuve_label: str,
+    ) -> GenerationResult:
+        catalogue = load_catalogue(self.db)
+        section = next(
+            (s for s in catalogue.get("sections", []) if s["label"] == section_label),
+            None,
+        )
+        if not section:
+            raise ValueError("Section inconnue.")
+        type_map = {"DS": "DS", "Examen Final": "EXAMEN_FINAL", "EXAMEN_FINAL": "EXAMEN_FINAL"}
+        type_epreuve = type_map.get(type_epreuve_label, type_epreuve_label)
+        result, _ = self.generer_auto(
+            section_id=section["section_id"],
+            session_id=session_id,
+            type_epreuve=type_epreuve,
+            semestre="S1",
+        )
+        return result
+
+    def _generer_and_fetch(
+        self,
+        request: GenerationRequest,
+        *,
+        section_id: int,
+    ) -> tuple[GenerationResult, list[Planification]]:
+        result = self.generer_planifications(request)
+        planifs = get_emploi_du_temps_filtre(
+            self.db,
+            session_id=request.session_id,
+            section_id=section_id,
+            statut=StatutPlanification.BROUILLON.value,
+        )
+        return result, planifs
+
+    def deplacer(
+        self,
+        planif_id: int,
+        nouvelle_date: date,
+        nouvelle_heure_debut,
+        nouvelle_heure_fin,
+    ) -> tuple[Planification, list[str]]:
+        planif = self.get_by_id(planif_id)
+        patch = PlanificationUpdate(
+            date_examen=nouvelle_date,
+            heure_debut=nouvelle_heure_debut,
+            heure_fin=nouvelle_heure_fin,
+        )
+        return self.update(planif_id, patch)
+
+    def changer_salle(
+        self,
+        planif_id: int,
+        groupe_id: int,
+        nouvelle_salle_id: str,
+    ) -> tuple[Planification, list[str]]:
+        planif = self.get_by_id(planif_id)
+        catalogue = load_catalogue(self.db)
+        template = next(
+            (s for s in catalogue.get("salles", []) if s["salle_id"] == nouvelle_salle_id),
+            None,
+        )
+        capacity = template["capacite"] if template else planif.section_nb_etudiants
+        batiment = template.get("batiment") if template else None
+
+        target = next((s for s in planif.salles_affectees if s.groupe_id == groupe_id), None)
+        if target:
+            salles = [
+                PlanifSalleAssign(
+                    salle_id=nouvelle_salle_id if s.groupe_id == groupe_id else s.salle_id,
+                    salle_capacite=capacity if s.groupe_id == groupe_id else s.salle_capacite,
+                    salle_batiment=batiment if s.groupe_id == groupe_id else s.salle_batiment,
+                    groupe_id=s.groupe_id,
+                    groupe_effectif=s.groupe_effectif,
+                )
+                for s in planif.salles_affectees
+            ]
+        else:
+            salles = [
+                PlanifSalleAssign(
+                    salle_id=nouvelle_salle_id,
+                    salle_capacite=capacity,
+                    salle_batiment=batiment,
+                    groupe_id=groupe_id,
+                    groupe_effectif=planif.section_nb_etudiants,
+                )
+            ]
+        return self.affecter_salles_manuel(planif_id, salles)
+
+    def _clear_brouillon_scope(self, request: GenerationRequest) -> None:
+        """Remove draft planifs for the scope before regenerating to avoid C6 duplicates."""
+        section_ids = set(request.scope_section_ids or [])
+        if not section_ids and request.tasks:
+            section_ids = {task.section_id for task in request.tasks}
+        type_epreuves = {
+            _type_epreuve_value(task.type_epreuve) for task in request.tasks
+        }
+
+        existing = list_existing_for_session(self.db, request.session_id)
+        for planif in existing:
+            if str(planif.statut).upper() != StatutPlanification.BROUILLON.value:
+                continue
+            if section_ids and planif.section_id not in section_ids:
+                continue
+            if type_epreuves and _type_epreuve_value(planif.type_epreuve) not in type_epreuves:
+                continue
+            delete_planification(self.db, planif)
 
     def generer_planifications(self, request: GenerationRequest) -> GenerationResult:
         request = self._resolve_session_context(request)
+        self._clear_brouillon_scope(request)
         existing = list_existing_for_session(self.db, request.session_id)
         known_section_matiere_ids = {item.section_matiere_id for item in request.tasks} or None
         creates, result = generer(
@@ -283,6 +404,7 @@ class PlanifService:
         )
         updated: list[Planification] = []
         for planif in planifs:
+            ensure_planif_creneau(self.db, planif)
             patch = PlanificationUpdate(statut=StatutPlanification.VALIDEE)
             updated.append(update_planification(self.db, planif, patch))
         return updated
