@@ -247,12 +247,25 @@ export type GetAllSurveillantsItem = {
   volume_horaire: number;
   volume_consomme: number;
   volume_restant: number;
+  /** Quota annuel (charge_horaire) pour l'annee universitaire de la session */
+  volume_annuel: number;
+  /** Somme des charges de surveillance affectees sur cette annee universitaire */
+  charge_surveillance: number;
+  taux_utilisation: number;
   nb_surveillances: number;
 };
 
 export type GetAllSurveillantsResponse = {
+  session_id: number;
+  annee_universitaire: string;
+  session_label?: string | null;
   data: GetAllSurveillantsItem[];
-  pagination: Record<string, unknown>;
+  pagination: {
+    page?: number;
+    limit?: number;
+    total?: number;
+    pages?: number;
+  };
 };
 
 export type DisponibiliteItem = {

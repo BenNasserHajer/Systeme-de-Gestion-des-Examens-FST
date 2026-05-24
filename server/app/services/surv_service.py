@@ -343,11 +343,17 @@ class SurvService:
         nb = count_surveillances_for_enseignant(
             self.db, enseignant_id, annee_universitaire
         )
+        volume_restant = round(volume_horaire - volume_consomme, 2)
+        taux = round((volume_consomme / volume_horaire) * 100, 1) if volume_horaire > 0 else 0.0
         return {
-            "enseignant_id":    enseignant_id,
-            "volume_horaire":   volume_horaire,
-            "volume_consomme":  volume_consomme,
-            "volume_restant":   round(volume_horaire - volume_consomme, 2),
+            "enseignant_id": enseignant_id,
+            "annee_universitaire": annee_universitaire,
+            "volume_horaire": volume_horaire,
+            "volume_consomme": volume_consomme,
+            "volume_restant": volume_restant,
+            "volume_annuel": volume_horaire,
+            "charge_surveillance": volume_consomme,
+            "taux_utilisation": taux,
             "nb_surveillances": nb,
         }
 

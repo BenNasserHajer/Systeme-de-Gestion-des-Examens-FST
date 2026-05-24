@@ -476,6 +476,86 @@ def get_all_surveillances_enseignant(
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# LISTE TOUS LES ENSEIGNANTS AVEC VOLUME (route statique avant /{session_id})
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/getallsurveillants", response_model=GetAllSurveillantsResponse)
+def get_all_surveillants(
+    session_id: int = Query(...),
+    page:  int = Query(1,  ge=1),
+    limit: int = Query(100, ge=1, le=500),
+    sort:  str = Query("volume_restant"),
+    order: str = Query("desc", pattern="^(asc|desc)$"),
+    db: Session = Depends(get_db),
+):
+    """Liste tous les enseignants avec volume annuel et charge surveillance (annee session)."""
+    from app.models.salle_session import Session as SessionModel
+    from app.models.enseignant import Enseignant
+
+    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session non trouvée")
+
+    service = SurvService(db)
+    enseignants = db.query(Enseignant).all()
+    items = []
+
+    annee_univ = session.annee_universitaire
+    session_label = f"{session.type_session} {annee_univ}".strip()
+
+    for ens in enseignants:
+        vol = service.get_volume_restant_enseignant(ens.id, annee_univ)
+        dept = ens.departement
+        items.append(
+            GetAllSurveillantsItem(
+                enseignant_id=ens.id,
+                nom=ens.nom,
+                prenom=ens.prenom,
+                grade=ens.grade,
+                departement={
+                    "id": dept.id if dept else None,
+                    "nom": dept.nom if dept else "Unknown",
+                    "code": dept.code if dept else "UNK",
+                },
+                volume_horaire=vol["volume_horaire"],
+                volume_consomme=vol["volume_consomme"],
+                volume_restant=vol["volume_restant"],
+                volume_annuel=vol["volume_annuel"],
+                charge_surveillance=vol["charge_surveillance"],
+                taux_utilisation=vol["taux_utilisation"],
+                nb_surveillances=vol["nb_surveillances"],
+            )
+        )
+
+    allowed_sort = {
+        "volume_restant",
+        "volume_consomme",
+        "volume_horaire",
+        "volume_annuel",
+        "charge_surveillance",
+        "taux_utilisation",
+        "nb_surveillances",
+    }
+    sort_key = sort if sort in allowed_sort else "charge_surveillance"
+    items.sort(key=lambda x: getattr(x, sort_key, 0) or 0, reverse=(order == "desc"))
+    start = (page - 1) * limit
+    paginated = items[start : start + limit]
+
+    return GetAllSurveillantsResponse(
+        session_id=session_id,
+        annee_universitaire=annee_univ,
+        session_label=session_label,
+        data=paginated,
+        pagination={
+            "page": page,
+            "limit": limit,
+            "total": len(items),
+            "pages": (len(items) + limit - 1) // limit,
+        },
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # LISTE DES SURVEILLANCES D'UNE SESSION
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -609,78 +689,6 @@ def get_surveillance_detail(surveillance_id: int, db: Session = Depends(get_db))
     if not s:
         raise HTTPException(status_code=404, detail="Surveillance non trouvée")
     return _enrich_surveillance(db, s)
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# LISTE TOUS LES ENSEIGNANTS AVEC VOLUME
-# ══════════════════════════════════════════════════════════════════════════════
-
-@router.get("/getallsurveillants", response_model=GetAllSurveillantsResponse)
-def get_all_surveillants(
-    session_id: int = Query(...),
-    page:  int = Query(1,  ge=1),
-    limit: int = Query(20, ge=1, le=100),
-    sort:  str = Query("volume_restant"),
-    order: str = Query("desc", pattern="^(asc|desc)$"),
-    db: Session = Depends(get_db),
-):
-    """
-    Retourne la liste de TOUS les enseignants avec leur volume horaire
-    de surveillance pour une session donnée.
-
-    QUERY PARAMS :
-      - session_id (int, obligatoire) : ID de la session — sert à déduire
-                                        l'année universitaire pour le calcul des volumes
-      - page       (int, défaut 1)    : numéro de page
-      - limit      (int, défaut 20)   : taille de page (max 100)
-      - sort       (str, défaut "volume_restant") : champ de tri parmi :
-                                        "volume_restant", "volume_consomme",
-                                        "volume_horaire", "nb_surveillances"
-      - order      (str, défaut "desc") : "asc" ou "desc"
-
-    RÉPONSE :
-      - data : liste paginée d'enseignants, chacun avec :
-          • enseignant_id, nom, prenom, grade
-          • departement (id, nom, code)
-          • volume_horaire   : heures allouées pour l'année
-          • volume_consomme  : heures déjà utilisées en surveillance
-          • volume_restant   : heures encore disponibles
-          • nb_surveillances : nombre de surveillances effectuées
-      - pagination :
-          • page, limit, total, pages
-
-    ERREURS :
-      - 404 : session non trouvée
-    """
-    from app.models.salle_session import Session as SessionModel
-    from app.models.enseignant import Enseignant
-
-    session = db.query(SessionModel).filter(SessionModel.id == session_id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="Session non trouvée")
-
-    service     = SurvService(db)
-    enseignants = db.query(Enseignant).all()
-    items       = []
-
-    for ens in enseignants:
-        vol  = service.get_volume_restant_enseignant(ens.id, session.annee_universitaire)
-        dept = ens.departement
-        items.append(GetAllSurveillantsItem(
-            enseignant_id=ens.id, nom=ens.nom, prenom=ens.prenom, grade=ens.grade,
-            departement={"id": dept.id if dept else None, "nom": dept.nom if dept else "Unknown", "code": dept.code if dept else "UNK"},
-            volume_horaire=vol["volume_horaire"], volume_consomme=vol["volume_consomme"],
-            volume_restant=vol["volume_restant"], nb_surveillances=vol["nb_surveillances"],
-        ))
-
-    items.sort(key=lambda x: getattr(x, sort, 0) or 0, reverse=(order == "desc"))
-    start     = (page - 1) * limit
-    paginated = items[start: start + limit]
-
-    return GetAllSurveillantsResponse(
-        data=paginated,
-        pagination={"page": page, "limit": limit, "total": len(items), "pages": (len(items) + limit - 1) // limit},
-    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
