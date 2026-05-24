@@ -42,7 +42,8 @@ export function useConvocation(
     } finally {
       setLoading(false);
     }
-  }, [enseignantId, filters]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enseignantId, JSON.stringify(filters)]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {

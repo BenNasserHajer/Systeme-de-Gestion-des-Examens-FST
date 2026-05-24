@@ -910,7 +910,7 @@ def get_conflits_session(
                 )
                 if nb < planif.nb_surveillants_requis:
                     grp   = db.query(Groupe).filter(Groupe.id == ps.groupe_id).first() if ps.groupe_id else None
-                    salle = db.query(Salle).filter(Salle.id == ps.salle_id).first()    if ps.salle_id  else None
+                    salle = db.query(Salle).filter(Salle.code == ps.salle_id).first()  if ps.salle_id  else None
 
                     conflits.append({
                         "planif_id": planif.id,

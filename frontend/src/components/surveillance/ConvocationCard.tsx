@@ -1,3 +1,5 @@
+import { TeacherCalendarGrid } from "@/components/surveillance/TeacherCalendarGrid";
+
 type ConvocationAssignment = {
   matiere: string;
   date: string;
@@ -62,29 +64,8 @@ export function ConvocationCard({
         </div>
       ) : null}
 
-      <div className="mt-4 space-y-3">
-        {assignments.length === 0 ? (
-          <p className="text-sm text-slate-500">Aucune surveillance assignée.</p>
-        ) : (
-          assignments.map((assignment, index) => (
-            <div key={index} className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2">
-              <p className="text-sm font-medium text-slate-800">
-                {assignment.matiere}
-              </p>
-              <p className="text-xs text-slate-600">
-                {assignment.date}
-                {assignment.heure_debut ? ` · ${assignment.heure_debut}` : ""}
-                {assignment.heure_fin ? ` - ${assignment.heure_fin}` : ""}
-              </p>
-              <p className="text-xs text-slate-600">
-                Salle: {assignment.salle ?? "—"} · Groupe: {assignment.groupe ?? "—"}
-              </p>
-              {assignment.charge !== undefined ? (
-                <p className="text-xs text-slate-600">Charge: {assignment.charge}</p>
-              ) : null}
-            </div>
-          ))
-        )}
+      <div className="mt-4">
+        <TeacherCalendarGrid assignments={assignments} />
       </div>
     </article>
   );

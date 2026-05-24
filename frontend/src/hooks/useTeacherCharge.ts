@@ -49,8 +49,7 @@ export function useTeacherCharge(
     setLoading(true);
     setError(null);
     try {
-      const data: GetAllSurveillantsResponse = await getAllSurveillants({
-        session_id: sessionId,
+      const data: GetAllSurveillantsResponse = await getAllSurveillants(sessionId, {
         page: options.page ?? 1,
         limit: options.limit ?? 500,
         sort: options.sort ?? "charge_surveillance",

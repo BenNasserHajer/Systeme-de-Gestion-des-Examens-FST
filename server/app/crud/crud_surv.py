@@ -42,7 +42,8 @@ def _enrich_surveillance(db: Session, s: Surveillance, annee_univ: str | None = 
     mat       = sm.matiere            if sm     else None
     sec       = sm.section            if sm     else None
     niv       = sec.niveau            if sec    else None
-    dept_exam = planif.departement    if planif else None
+    # Planification doesn't have a direct departement relationship
+    dept_exam = None
 
     # — Session (pour annee_univ si non fourni) —
     sess_obj = planif.session if planif else None
@@ -355,7 +356,7 @@ def get_surveillances_enrichies_for_enseignant(
         mat       = sm.matiere             if sm     else None
         sec       = sm.section             if sm     else None
         niv       = sec.niveau             if sec    else None
-        dept_exam = planif.departement     if planif else None
+        dept_exam = None
         grp       = s.groupe
         salle     = s.salle
 
