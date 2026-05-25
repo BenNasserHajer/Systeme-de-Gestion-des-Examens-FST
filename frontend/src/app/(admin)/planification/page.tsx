@@ -33,6 +33,8 @@ export default function PlanificationPage() {
     sectionId,
     semestre,
     setSemestre,
+    setSessionId,
+    setSectionId,
     setWarnings,
   } = usePlanificationSchedule();
 
@@ -265,7 +267,11 @@ export default function PlanificationPage() {
         catalogue={catalogue}
         loading={loading}
         semestre={semestre}
+        sessionId={sessionId}
+        sectionId={sectionId}
         onSemestreChange={setSemestre}
+        onSessionChange={setSessionId}
+        onSectionChange={setSectionId}
         onGenerate={generate}
       />
 
@@ -295,7 +301,7 @@ export default function PlanificationPage() {
         </div>
       ) : null}
 
-      {items.length > 0 ? (
+      {items.length > 0 || sessionId ? (
         <>
           <ExamCalendarGrid
             items={items}

@@ -35,6 +35,24 @@ export function usePlanificationSchedule() {
       });
   }, []);
 
+  // Auto-select appropriate session when semestre changes.
+  // Sessions are ordered by date_debut (S1 = earliest, S2 = latest).
+  useEffect(() => {
+    if (!catalogue || !semestre || catalogue.sessions.length === 0) {
+      return;
+    }
+
+    const sessionsByDate = [...catalogue.sessions].sort((a, b) =>
+      a.date_debut.localeCompare(b.date_debut),
+    );
+    const targetSession =
+      semestre === "S2" ? sessionsByDate[sessionsByDate.length - 1] : sessionsByDate[0];
+
+    if (targetSession && targetSession.session_id !== sessionId) {
+      setSessionId(targetSession.session_id);
+    }
+  }, [semestre, catalogue, sessionId]);
+
   const refreshSchedule = useCallback(
     async (sid?: number | null, secId?: number | null) => {
       const effectiveSession = sid ?? sessionId;
@@ -58,11 +76,15 @@ export function usePlanificationSchedule() {
     [sessionId, sectionId],
   );
 
+  // Auto-refresh when session, section, or semestre changes
   useEffect(() => {
     if (sessionId && sectionId) {
       void refreshSchedule(sessionId, sectionId);
+    } else {
+      setItems([]);
+      setGenerationResult(null);
     }
-  }, [sessionId, sectionId, refreshSchedule]);
+  }, [sessionId, sectionId, semestre, refreshSchedule]);
 
   const generate = useCallback(async (params: GenerationParams) => {
     setLoading(true);
@@ -117,6 +139,8 @@ export function usePlanificationSchedule() {
     sectionId,
     semestre,
     setSemestre,
+    setSessionId,
+    setSectionId,
     generate,
     validateAll,
     refreshSchedule,

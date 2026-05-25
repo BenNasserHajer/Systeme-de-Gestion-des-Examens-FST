@@ -125,6 +125,7 @@ SET designation = EXCLUDED.designation,
     id_departement = EXCLUDED.id_departement;
 
 -- 6) SESSION
+-- Session S1 (Semestre 1)
 INSERT INTO session (type_session, annee_universitaire, date_debut, date_fin, statut)
 SELECT 'PRINCIPALE', '2025/2026', DATE '2026-01-07', DATE '2026-01-15', 'VALIDEE'
 WHERE NOT EXISTS (
@@ -132,15 +133,82 @@ WHERE NOT EXISTS (
     FROM session s
     WHERE s.type_session = 'PRINCIPALE'
       AND s.annee_universitaire = '2025/2026'
+      AND s.date_debut = DATE '2026-01-07'
+);
+
+-- Session S2 (Semestre 2)
+INSERT INTO session (type_session, annee_universitaire, date_debut, date_fin, statut)
+SELECT 'PRINCIPALE', '2025/2026', DATE '2026-05-11', DATE '2026-05-23', 'BROUILLON'
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM session s
+    WHERE s.type_session = 'PRINCIPALE'
+      AND s.annee_universitaire = '2025/2026'
+      AND s.date_debut = DATE '2026-05-11'
 );
 
 -- 7) CRENEAU
+-- Créneaux pour Session S1 (Janvier 2026)
 INSERT INTO creneau (date, heure_debut, heure_fin, libelle)
 VALUES
     (DATE '2026-01-07', TIME '08:30', TIME '10:30', 'Mer 07/01 Matin'),
     (DATE '2026-01-07', TIME '11:00', TIME '13:00', 'Mer 07/01 Midi'),
     (DATE '2026-01-08', TIME '08:30', TIME '10:30', 'Jeu 08/01 Matin'),
     (DATE '2026-01-08', TIME '11:00', TIME '13:00', 'Jeu 08/01 Midi')
+ON CONFLICT (date, heure_debut) DO NOTHING;
+
+-- Créneaux pour Session S2 (Mai 2026 - du 11 au 23 mai)
+-- Semaine 1: 11-16 mai (Lundi à Samedi)
+INSERT INTO creneau (date, heure_debut, heure_fin, libelle)
+VALUES
+    -- Lundi 11 mai
+    (DATE '2026-05-11', TIME '08:00', TIME '10:00', 'Lun 11/05 Matin'),
+    (DATE '2026-05-11', TIME '10:30', TIME '12:30', 'Lun 11/05 Midi'),
+    (DATE '2026-05-11', TIME '14:00', TIME '16:00', 'Lun 11/05 Après-midi'),
+    -- Mardi 12 mai
+    (DATE '2026-05-12', TIME '08:00', TIME '10:00', 'Mar 12/05 Matin'),
+    (DATE '2026-05-12', TIME '10:30', TIME '12:30', 'Mar 12/05 Midi'),
+    (DATE '2026-05-12', TIME '14:00', TIME '16:00', 'Mar 12/05 Après-midi'),
+    -- Mercredi 13 mai
+    (DATE '2026-05-13', TIME '08:00', TIME '10:00', 'Mer 13/05 Matin'),
+    (DATE '2026-05-13', TIME '10:30', TIME '12:30', 'Mer 13/05 Midi'),
+    (DATE '2026-05-13', TIME '14:00', TIME '16:00', 'Mer 13/05 Après-midi'),
+    -- Jeudi 14 mai
+    (DATE '2026-05-14', TIME '08:00', TIME '10:00', 'Jeu 14/05 Matin'),
+    (DATE '2026-05-14', TIME '10:30', TIME '12:30', 'Jeu 14/05 Midi'),
+    (DATE '2026-05-14', TIME '14:00', TIME '16:00', 'Jeu 14/05 Après-midi'),
+    -- Vendredi 15 mai
+    (DATE '2026-05-15', TIME '08:00', TIME '10:00', 'Ven 15/05 Matin'),
+    (DATE '2026-05-15', TIME '10:30', TIME '12:30', 'Ven 15/05 Midi'),
+    (DATE '2026-05-15', TIME '14:00', TIME '16:00', 'Ven 15/05 Après-midi'),
+    -- Samedi 16 mai
+    (DATE '2026-05-16', TIME '08:00', TIME '10:00', 'Sam 16/05 Matin'),
+    (DATE '2026-05-16', TIME '10:30', TIME '12:30', 'Sam 16/05 Midi'),
+    
+    -- Semaine 2: 18-23 mai (Lundi à Samedi, pas de dimanche)
+    -- Lundi 18 mai
+    (DATE '2026-05-18', TIME '08:00', TIME '10:00', 'Lun 18/05 Matin'),
+    (DATE '2026-05-18', TIME '10:30', TIME '12:30', 'Lun 18/05 Midi'),
+    (DATE '2026-05-18', TIME '14:00', TIME '16:00', 'Lun 18/05 Après-midi'),
+    -- Mardi 19 mai
+    (DATE '2026-05-19', TIME '08:00', TIME '10:00', 'Mar 19/05 Matin'),
+    (DATE '2026-05-19', TIME '10:30', TIME '12:30', 'Mar 19/05 Midi'),
+    (DATE '2026-05-19', TIME '14:00', TIME '16:00', 'Mar 19/05 Après-midi'),
+    -- Mercredi 20 mai
+    (DATE '2026-05-20', TIME '08:00', TIME '10:00', 'Mer 20/05 Matin'),
+    (DATE '2026-05-20', TIME '10:30', TIME '12:30', 'Mer 20/05 Midi'),
+    (DATE '2026-05-20', TIME '14:00', TIME '16:00', 'Mer 20/05 Après-midi'),
+    -- Jeudi 21 mai
+    (DATE '2026-05-21', TIME '08:00', TIME '10:00', 'Jeu 21/05 Matin'),
+    (DATE '2026-05-21', TIME '10:30', TIME '12:30', 'Jeu 21/05 Midi'),
+    (DATE '2026-05-21', TIME '14:00', TIME '16:00', 'Jeu 21/05 Après-midi'),
+    -- Vendredi 22 mai
+    (DATE '2026-05-22', TIME '08:00', TIME '10:00', 'Ven 22/05 Matin'),
+    (DATE '2026-05-22', TIME '10:30', TIME '12:30', 'Ven 22/05 Midi'),
+    (DATE '2026-05-22', TIME '14:00', TIME '16:00', 'Ven 22/05 Après-midi'),
+    -- Samedi 23 mai
+    (DATE '2026-05-23', TIME '08:00', TIME '10:00', 'Sam 23/05 Matin'),
+    (DATE '2026-05-23', TIME '10:30', TIME '12:30', 'Sam 23/05 Midi')
 ON CONFLICT (date, heure_debut) DO NOTHING;
 
 -- 8) ENSEIGNANT

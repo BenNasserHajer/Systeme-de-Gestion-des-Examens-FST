@@ -50,6 +50,21 @@ export function formatDayHeader(dateStr: string): string {
   }).format(date);
 }
 
+export function formatDayHeaderParts(dateStr: string): { weekday: string; monthDay: string } {
+  const date = new Date(`${dateStr}T12:00:00`);
+  return {
+    weekday: new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(date),
+    monthDay: new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(date),
+  };
+}
+
+export function formatDayRange(start: string, end: string): string {
+  const formatter = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+  const startDate = new Date(`${start}T12:00:00`);
+  const endDate = new Date(`${end}T12:00:00`);
+  return `${formatter.format(startDate)} - ${formatter.format(endDate)}`;
+}
+
 export function getWeekDaysFromPlanifs(
   items: Planification[],
   sessionStart?: string,
@@ -59,15 +74,19 @@ export function getWeekDaysFromPlanifs(
   if (sessionStart && sessionEnd) {
     const start = new Date(`${sessionStart}T12:00:00`);
     const end = new Date(`${sessionEnd}T12:00:00`);
-    const days: string[] = [];
-    
-    const current = new Date(start);
-    while (current <= end && days.length < 10) { // Max 10 days to avoid huge calendars
-      days.push(current.toISOString().slice(0, 10));
-      current.setDate(current.getDate() + 1);
+    if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime()) && start <= end) {
+      const days: string[] = [];
+      const totalDays = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1;
+      const maxDays = Math.min(totalDays, 31);
+
+      const current = new Date(start);
+      while (current <= end && days.length < maxDays) {
+        days.push(current.toISOString().slice(0, 10));
+        current.setDate(current.getDate() + 1);
+      }
+
+      return days;
     }
-    
-    return days;
   }
 
   // Fallback to existing logic if no session dates

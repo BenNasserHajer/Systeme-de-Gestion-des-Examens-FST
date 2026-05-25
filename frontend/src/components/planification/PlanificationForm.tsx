@@ -11,7 +11,11 @@ type PlanificationFormProps = {
   catalogue: Catalogue | null;
   loading: boolean;
   semestre: GenerationParams["semestre"];
+  sessionId: number | null;
+  sectionId: number | null;
   onSemestreChange: (semestre: GenerationParams["semestre"]) => void;
+  onSessionChange: (sessionId: number) => void;
+  onSectionChange: (sectionId: number) => void;
   onGenerate: (params: GenerationParams) => Promise<void>;
 };
 
@@ -19,21 +23,31 @@ export function PlanificationForm({
   catalogue,
   loading,
   semestre,
+  sessionId,
+  sectionId,
+  hasPlan,
   onSemestreChange,
+  onSessionChange,
+  onSectionChange,
   onGenerate,
 }: PlanificationFormProps) {
-  const [sectionId, setSectionId] = useState<number | null>(null);
-  const [sessionId, setSessionId] = useState<number | null>(null);
   const [typeEpreuve, setTypeEpreuve] = useState<GenerationParams["type_epreuve"]>("EXAMEN_FINAL");
 
   useEffect(() => {
     if (!catalogue) {
       return;
     }
-    setSectionId(catalogue.sections[0]?.section_id ?? null);
-    setSessionId(catalogue.sessions[0]?.session_id ?? null);
+    // Initialize with first values if not set
+    if (!sectionId && catalogue.sections[0]) {
+      onSectionChange(catalogue.sections[0].section_id);
+    }
+    if (!sessionId && catalogue.sessions[0]) {
+      onSessionChange(catalogue.sessions[0].session_id);
+    }
     setTypeEpreuve(catalogue.types_epreuve[0]?.value ?? "EXAMEN_FINAL");
-  }, [catalogue]);
+  }, [catalogue, sectionId, sessionId, onSectionChange, onSessionChange]);
+
+
 
   const selectedSection = useMemo(
     () => catalogue?.sections.find((s) => s.section_id === sectionId) ?? null,
@@ -86,7 +100,7 @@ export function PlanificationForm({
         <Field label="Section">
           <select
             value={sectionId ?? ""}
-            onChange={(e) => setSectionId(Number(e.target.value))}
+            onChange={(e) => onSectionChange(Number(e.target.value))}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           >
             {catalogue.sections.map((section) => (
@@ -100,12 +114,12 @@ export function PlanificationForm({
         <Field label="Session">
           <select
             value={sessionId ?? ""}
-            onChange={(e) => setSessionId(Number(e.target.value))}
+            onChange={(e) => onSessionChange(Number(e.target.value))}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
           >
             {catalogue.sessions.map((session) => (
               <option key={session.session_id} value={session.session_id}>
-                {session.label}
+                {session.label} ({session.date_debut} au {session.date_fin})
               </option>
             ))}
           </select>

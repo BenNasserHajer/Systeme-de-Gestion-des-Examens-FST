@@ -11,7 +11,8 @@ import {
   addMinutesToTime,
   CALENDAR_END_HOUR,
   CALENDAR_START_HOUR,
-  formatDayHeader,
+  formatDayHeaderParts,
+  formatDayRange,
   formatTimeAmPm,
   getWeekDaysFromPlanifs,
   HOUR_HEIGHT_PX,
@@ -50,6 +51,12 @@ export function ExamCalendarGrid({
     () => getWeekDaysFromPlanifs(items, sessionStart, sessionEnd),
     [items, sessionStart, sessionEnd]
   );
+  const rangeLabel = useMemo(() => {
+    if (weekDays.length === 0) {
+      return "";
+    }
+    return formatDayRange(weekDays[0], weekDays[weekDays.length - 1]);
+  }, [weekDays]);
   const hours = useMemo(
     () => Array.from({ length: CALENDAR_END_HOUR - CALENDAR_START_HOUR }, (_, i) => CALENDAR_START_HOUR + i),
     [],
@@ -108,15 +115,15 @@ export function ExamCalendarGrid({
 
   return (
     <div className="space-y-3">
-      <CalendarToolbar saving={saving} count={items.length} />
+      <CalendarToolbar saving={saving} count={items.length} rangeLabel={rangeLabel} dayCount={weekDays.length} />
       {dropError ? (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           {dropError}
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="min-w-[900px]">
+      <div className="overflow-x-auto rounded-2xl border border-slate-200/70 bg-[linear-gradient(180deg,#ffffff_0%,#f8fafc_100%)] shadow-[0_12px_40px_rgba(15,23,42,0.08)]">
+        <div className="min-w-[900px] bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.12),_transparent_50%)]">
           <CalendarHeader weekDays={weekDays} />
           <CalendarBody
             weekDays={weekDays}
@@ -139,21 +146,44 @@ export function ExamCalendarGrid({
         salles={salles}
         onClose={() => setEditing(null)}
         onSave={handleSaveSalle}
+        onUpdated={onUpdated}
       />
     </div>
   );
 }
 
-function CalendarToolbar({ saving, count }: { saving: boolean; count: number }) {
+function CalendarToolbar({
+  saving,
+  count,
+  rangeLabel,
+  dayCount,
+}: {
+  saving: boolean;
+  count: number;
+  rangeLabel: string;
+  dayCount: number;
+}) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/70 bg-white/70 px-4 py-3 shadow-sm backdrop-blur">
       <div>
         <h3 className="text-base font-semibold text-slate-900">Emploi du temps d&apos;examen</h3>
         <p className="text-sm text-slate-500">
           {count} examen{count !== 1 ? "s" : ""} · Glissez-deposez pour ajuster
         </p>
       </div>
-      {saving ? <span className="text-xs text-blue-600">Enregistrement...</span> : null}
+      <div className="flex items-center gap-2">
+        {rangeLabel ? (
+          <span className="rounded-full bg-slate-900/5 px-3 py-1 text-[11px] font-semibold text-slate-700">
+            {rangeLabel}
+          </span>
+        ) : null}
+        {dayCount > 0 ? (
+          <span className="rounded-full bg-slate-900/5 px-3 py-1 text-[11px] font-semibold text-slate-600">
+            {dayCount} jours
+          </span>
+        ) : null}
+        {saving ? <span className="text-xs font-semibold text-blue-600">Enregistrement...</span> : null}
+      </div>
     </div>
   );
 }
@@ -161,15 +191,29 @@ function CalendarToolbar({ saving, count }: { saving: boolean; count: number }) 
 function CalendarHeader({ weekDays }: { weekDays: string[] }) {
   return (
     <GridDiv
-      className="grid border-b border-slate-200 bg-slate-50"
+      className="sticky top-0 z-10 grid border-b border-slate-200/70 bg-gradient-to-b from-white via-slate-50 to-slate-50/60 shadow-[inset_0_-1px_0_rgba(148,163,184,0.3)] backdrop-blur"
       style={{ gridTemplateColumns: `80px repeat(${weekDays.length}, 1fr)` }}
     >
-      <div className="px-3 py-3 text-xs font-semibold text-slate-600">Time</div>
-      {weekDays.map((day) => (
-        <div key={day} className="px-2 py-3 text-center text-xs font-semibold text-slate-700">
-          {formatDayHeader(day)}
-        </div>
-      ))}
+      <div className="sticky left-0 z-20 border-r border-slate-200/70 bg-white/90 px-3 py-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 backdrop-blur">
+        Time
+      </div>
+      {weekDays.map((day) => {
+        const { weekday, monthDay } = formatDayHeaderParts(day);
+        const weekend = isWeekendDate(day);
+        return (
+          <div
+            key={day}
+            className={`border-l border-slate-200/60 px-2 py-3 text-center ${
+              weekend ? "text-amber-700" : "text-slate-700"
+            }`}
+          >
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+              {weekday}
+            </div>
+            <div className="text-sm font-semibold">{monthDay}</div>
+          </div>
+        );
+      })}
     </GridDiv>
   );
 }
@@ -221,11 +265,11 @@ function CalendarBody({
 
 function TimeColumn({ hours }: { hours: number[] }) {
   return (
-    <div>
+    <div className="sticky left-0 z-10 bg-gradient-to-b from-white via-slate-50 to-white">
       {hours.map((hour) => (
         <GridDiv
           key={hour}
-          className="border-b border-r border-slate-100 px-2 text-right text-[11px] text-slate-500"
+          className="border-b border-r border-slate-200/70 px-2 text-right text-[11px] font-medium text-slate-500"
           style={{ height: HOUR_HEIGHT_PX, lineHeight: `${HOUR_HEIGHT_PX}px` }}
         >
           {formatTimeAmPm(`${String(hour).padStart(2, "0")}:00:00`)}
@@ -259,14 +303,19 @@ function DayColumn({
   onClickEmpty?: (date: string, hour: number) => void;
 }) {
   return (
-    <div className="relative border-r border-slate-100" style={{ height: totalHeight }}>
+    <div
+      className={`relative border-r border-slate-200/70 ${
+        isWeekendDate(date) ? "bg-amber-50/40" : "bg-white/70"
+      }`}
+      style={{ height: totalHeight }}
+    >
       {hours.map((hour) => (
         <div
           key={hour}
           className={`border-b border-slate-100 transition-colors ${
             draggingId !== null 
-              ? "bg-blue-50/40 cursor-copy" 
-              : "hover:bg-slate-50 cursor-pointer"
+              ? "bg-sky-100/40 cursor-copy" 
+              : "hover:bg-slate-50/80 cursor-pointer"
           }`}
           style={{ height: HOUR_HEIGHT_PX }}
           onDragOver={(e) => e.preventDefault()}
@@ -311,4 +360,10 @@ function GridDiv({
       {children}
     </div>
   );
+}
+
+function isWeekendDate(dateStr: string): boolean {
+  const date = new Date(`${dateStr}T12:00:00`);
+  const day = date.getDay();
+  return day === 0 || day === 6;
 }
