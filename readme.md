@@ -8,6 +8,26 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?logo=typescript)](https://www.typescriptlang.org/)
 [![TailwindCSS](https://img.shields.io/badge/Tailwind-4.0-38B2AC?logo=tailwind-css)](https://tailwindcss.com/)
 
+## 🖥️ Application Overview
+
+**Admin Side :**
+<br></br>
+<img width="1842" height="899" alt="image" src="https://github.com/user-attachments/assets/3d4da2c1-c3fe-4f05-89cf-90f37fc561c1" />
+<br>
+<img width="1854" height="886" alt="image" src="https://github.com/user-attachments/assets/16290532-fa3d-41be-9471-389ea9c1edac" />
+<img width="1839" height="879" alt="image" src="https://github.com/user-attachments/assets/6f57063a-226b-4ed2-8295-e84dccb0c3bb" />
+<br>
+<img width="1852" height="889" alt="image" src="https://github.com/user-attachments/assets/c71fccab-259e-427d-86a7-7f860b96cbac" />
+
+<br></br>
+**Teacher side :**
+<br></br>
+<img width="1842" height="889" alt="image" src="https://github.com/user-attachments/assets/194d37cd-5e20-4fd3-8680-ab9814df9dce" />
+<br>
+<img width="1860" height="887" alt="image" src="https://github.com/user-attachments/assets/5f90be00-1b49-4176-b8be-a52eec1a416c" />
+
+
+
 ## 🎯 Vue d'ensemble
 
 Système web moderne pour automatiser la gestion des examens universitaires, incluant :
