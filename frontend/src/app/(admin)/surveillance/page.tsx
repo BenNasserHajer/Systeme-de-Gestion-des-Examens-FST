@@ -8,11 +8,13 @@ import { getCatalogue, type Catalogue } from "@/lib/api/referentiel";
 import { getAllSurveillants } from "@/lib/api/surveillance";
 import type { GetAllSurveillantsResponse } from "@/lib/types/surveillance";
 import { useConvocation } from "@/hooks/useConvocation";
+import { useDisponibilite } from "@/hooks/useDisponibilite";
 import { usePDFExport } from "@/hooks/usePDFExport";
 
 import { Layout } from "@/components/ui/Layout";
 import { Button } from "@/components/ui/Button";
 import { ConvocationCard } from "@/components/surveillance/ConvocationCard";
+import { DISPONIBILITE_TYPE_BADGE, DISPONIBILITE_TYPE_LABELS } from "@/lib/constants";
 
 export default function SurveillancePage() {
   return (
@@ -86,6 +88,50 @@ function SurveillancePageContent() {
     void loadSurveillants();
   }, [selectedSessionId]);
 
+  const selectedSession = useMemo(() => {
+    if (!catalogue || !selectedSessionId) return null;
+    return catalogue.sessions.find((s) => s.session_id === selectedSessionId) ?? null;
+  }, [catalogue, selectedSessionId]);
+
+  const sessionDateDebut = selectedSession?.date_debut ?? null;
+  const sessionDateFin = selectedSession?.date_fin ?? null;
+
+  const availabilityRange = useMemo(() => {
+    if (!catalogue?.sessions?.length) {
+      return { start: null, end: null };
+    }
+    const starts = catalogue.sessions.map((s) => s.date_debut).filter(Boolean) as string[];
+    const ends = catalogue.sessions.map((s) => s.date_fin).filter(Boolean) as string[];
+    if (starts.length === 0 || ends.length === 0) {
+      return { start: null, end: null };
+    }
+    const start = [...starts].sort()[0];
+    const end = [...ends].sort().slice(-1)[0];
+    return { start, end };
+  }, [catalogue]);
+
+  const availabilityStart = availabilityRange.start ?? sessionDateDebut;
+  const availabilityEnd = availabilityRange.end ?? sessionDateFin;
+
+  const {
+    data: disponibilitesData,
+    loading: disponibilitesLoading,
+    error: disponibilitesError,
+  } = useDisponibilite(selectedEnseignantId, availabilityStart, availabilityEnd);
+  const hasWiderAvailabilityRange = Boolean(
+    availabilityStart && availabilityEnd && sessionDateDebut && sessionDateFin &&
+      (availabilityStart !== sessionDateDebut || availabilityEnd !== sessionDateFin),
+  );
+
+  const isOutsideSessionRange = useCallback(
+    (date: string) => {
+      if (!sessionDateDebut || !sessionDateFin) return false;
+      return date < sessionDateDebut || date > sessionDateFin;
+    },
+    [sessionDateDebut, sessionDateFin],
+  );
+
+
   // Convocation logic
   const { data: convocationData, loading: convocationLoading, error: convocationError } = useConvocation(
     selectedEnseignantId, 
@@ -103,7 +149,7 @@ function SurveillancePageContent() {
   const convEnseignant = (convocationData?.enseignant ?? {}) as any;
   const convSession = (convocationData?.session ?? {
     annee_universitaire: allSurveillantsData?.annee_universitaire,
-    type_session: catalogue?.sessions.find(s => s.session_id === selectedSessionId)?.label || "Session"
+    type_session: selectedSession?.label || "Session"
   }) as any;
   const convAssignments = Array.isArray(convocationData?.surveillances)
     ? convocationData.surveillances.map((item: any) => ({
@@ -197,7 +243,74 @@ function SurveillancePageContent() {
       )}
 
       {selectedEnseignantId && (
-        <section className="mt-6">
+        <section className="mt-6 space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Indisponibilités</h3>
+                <p className="text-xs text-slate-500">
+                  {availabilityStart && availabilityEnd
+                    ? `Période ${availabilityStart} au ${availabilityEnd}`
+                    : "Période non définie"}
+                </p>
+                {hasWiderAvailabilityRange ? (
+                  <p className="text-[11px] text-slate-400">Inclut toutes les sessions de l&apos;année.</p>
+                ) : null}
+              </div>
+              {selectedEnseignantId && availabilityStart && availabilityEnd ? (
+                <Link
+                  href={`/surveillance/${selectedEnseignantId}/disponibilite?date_debut=${availabilityStart}&date_fin=${availabilityEnd}`}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700"
+                >
+                  Gérer les disponibilités
+                </Link>
+              ) : null}
+            </div>
+
+            {disponibilitesLoading && (
+              <p className="mt-3 text-xs text-slate-500">Chargement des indisponibilités...</p>
+            )}
+            {disponibilitesError && selectedEnseignantId && availabilityStart && availabilityEnd ? (
+              <p className="mt-3 text-xs text-red-600">{disponibilitesError}</p>
+            ) : null}
+
+            {!disponibilitesLoading && disponibilitesData?.disponibilites?.length ? (
+              <div className="mt-3 space-y-2">
+                {disponibilitesData.disponibilites.map((item, index) => (
+                  <div
+                    key={`${item.date}-${item.heure_debut}-${index}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-100 px-3 py-2 text-xs text-slate-600"
+                  >
+                    <div>
+                      <span className="font-medium text-slate-800">{item.date}</span> · {item.heure_debut} - {item.heure_fin}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          DISPONIBILITE_TYPE_BADGE[item.type] ?? "bg-slate-100 text-slate-700"
+                        }`}
+                      >
+                        {DISPONIBILITE_TYPE_LABELS[item.type] ?? item.type}
+                      </span>
+                      {isOutsideSessionRange(item.date) ? (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500">
+                          Hors session
+                        </span>
+                      ) : null}
+                      {item.motif ? (
+                        <span className="text-slate-500">· {item.motif}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
+            {!disponibilitesLoading && !disponibilitesData?.disponibilites?.length ? (
+              <p className="mt-3 text-xs text-slate-500">Aucune indisponibilité trouvée pour cette période.</p>
+            ) : null}
+          </div>
+
           {convocationLoading && <p className="text-sm text-slate-600 mb-4">Chargement de la convocation...</p>}
           {convocationError && <p className="text-sm text-red-600 mb-4">{convocationError}</p>}
           {exportError && <p className="text-sm text-red-600 mb-4">{exportError}</p>}

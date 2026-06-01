@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ConvocationCard } from "@/components/surveillance/ConvocationCard";
+import { getCatalogue, type Catalogue } from "@/lib/api/referentiel";
 import { useConvocation } from "@/hooks/useConvocation";
 import { usePDFExport } from "@/hooks/usePDFExport";
 
@@ -27,6 +28,8 @@ function ConvocationContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [catalogue, setCatalogue] = useState<Catalogue | null>(null);
+  const [selectedSemestre, setSelectedSemestre] = useState<number | "">("");
 
   useEffect(() => {
     fetch(API_ENDPOINTS.AUTH_ME, { credentials: "include" })
@@ -39,17 +42,38 @@ function ConvocationContent() {
       .catch(() => router.replace("/login"));
   }, [router]);
 
+  useEffect(() => {
+    getCatalogue()
+      .then(setCatalogue)
+      .catch(() => setCatalogue(null));
+  }, []);
+
+  useEffect(() => {
+    if (selectedSemestre) {
+      return;
+    }
+    const param = searchParams.get("semestre");
+    if (param) {
+      const parsed = Number(param);
+      if (parsed === 1 || parsed === 2) {
+        setSelectedSemestre(parsed);
+        return;
+      }
+    }
+    if (catalogue?.semestres?.length) {
+      setSelectedSemestre(catalogue.semestres.includes("S2") ? 2 : 1);
+    }
+  }, [catalogue, searchParams, selectedSemestre]);
+
   const validEnseignantId = user?.enseignant_id ?? null;
 
   const filters = useMemo(
     () => ({
       annee_universitaire: searchParams.get("annee_universitaire") ?? undefined,
-      semestre: searchParams.get("semestre")
-        ? Number(searchParams.get("semestre"))
-        : undefined,
+      semestre: selectedSemestre ? Number(selectedSemestre) : undefined,
       type_epreuve: searchParams.get("type_epreuve") ?? undefined,
     }),
-    [searchParams],
+    [searchParams, selectedSemestre],
   );
 
   const { data, loading, error } = useConvocation(validEnseignantId, filters);
@@ -63,7 +87,27 @@ function ConvocationContent() {
     email?: string | null;
   };
 
-  const session = (data?.session ?? {}) as {
+  const sessionFromSurveillances = Array.isArray(data?.surveillances) && data.surveillances.length > 0
+    ? (data.surveillances[0] as any)?.session
+    : null;
+
+  const chargeYear = (data as any)?.charge_horaire?.annee_universitaire ?? null;
+  const catalogueSessions = catalogue?.sessions ?? [];
+  const sessionsByDate = [...catalogueSessions].sort((a, b) => a.date_debut.localeCompare(b.date_debut));
+  const matchingSessions = chargeYear
+    ? sessionsByDate.filter((s) => s.label.includes(chargeYear))
+    : sessionsByDate;
+  const fallbackSession = matchingSessions.length
+    ? matchingSessions[matchingSessions.length - 1]
+    : null;
+  const semesterSession = selectedSemestre
+    ? (selectedSemestre === 1 ? matchingSessions[0] : matchingSessions[matchingSessions.length - 1])
+    : null;
+
+  const session = (sessionFromSurveillances ?? {
+    type_session: semesterSession?.label ?? fallbackSession?.label ?? "Session",
+    annee_universitaire: chargeYear ?? null,
+  }) as {
     type_session?: string | null;
     annee_universitaire?: string | null;
   };
@@ -187,6 +231,33 @@ function ConvocationContent() {
               <p style={{ margin: "12px 0 0", fontSize: 15, color: "#64748b", fontWeight: 400 }}>
                 Consultez votre emploi du temps de surveillance
               </p>
+            </div>
+            <div style={{ minWidth: 200 }}>
+              <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#64748b", marginBottom: 6 }}>
+                Semestre
+              </label>
+              <select
+                value={selectedSemestre}
+                onChange={(event) => {
+                  const value = event.target.value ? Number(event.target.value) : "";
+                  setSelectedSemestre(value === 1 || value === 2 ? value : "");
+                }}
+                style={{
+                  height: 38,
+                  width: "100%",
+                  borderRadius: 12,
+                  border: "1px solid #e2e8f0",
+                  padding: "0 12px",
+                  fontSize: 14,
+                  color: "#0f172a",
+                  background: "#ffffff",
+                  boxShadow: "0 1px 2px rgba(15,23,42,0.04)",
+                }}
+              >
+                <option value="">Tous</option>
+                <option value={1}>S1</option>
+                <option value={2}>S2</option>
+              </select>
             </div>
           </div>
         </div>

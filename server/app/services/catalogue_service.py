@@ -159,7 +159,21 @@ def _load_sessions(db: Session) -> list[dict[str, Any]]:
             )
         ).mappings().all()
         for row in rows:
-            label = f"Principale {row['annee']}".strip() if row["annee"] else f"Session {row['id']}"
+            annee = row['annee']
+            date_debut = row['date_debut']
+            
+            # Déterminer le semestre basé sur le mois de début
+            # Janvier-Février = S1, Mai-Juin = S2
+            if date_debut:
+                month = date_debut.month if hasattr(date_debut, 'month') else int(str(date_debut).split('-')[1])
+                if month >= 5:  # Mai ou après = S2
+                    semestre_suffix = " S2"
+                else:  # Janvier-Avril = S1
+                    semestre_suffix = " S1"
+            else:
+                semestre_suffix = ""
+            
+            label = f"Principale {annee}{semestre_suffix}".strip() if annee else f"Session {row['id']}"
             sessions.append(
                 {
                     "label": label,

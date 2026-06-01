@@ -1,289 +1,378 @@
-# 🎓 Système de Gestion des Examens et Surveillance
+# 📚 Système de Gestion des Examens - FST
 
-Système complet de planification d'examens et d'affectation automatique des surveillants pour établissements d'enseignement supérieur.
+> Plateforme complète de planification et surveillance des examens pour la Faculté des Sciences de Tunis
 
-## 🌟 Fonctionnalités
+[![Next.js](https://img.shields.io/badge/Next.js-16.2-black?logo=next.js)](https://nextjs.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.136-009688?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python)](https://www.python.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?logo=typescript)](https://www.typescriptlang.org/)
+[![TailwindCSS](https://img.shields.io/badge/Tailwind-4.0-38B2AC?logo=tailwind-css)](https://tailwindcss.com/)
 
-### ✅ Planification des Examens
-- Création et gestion des sessions d'examens
-- Planification automatique avec contraintes
-- Gestion des salles et créneaux horaires
-- Validation et modification des planifications
+## 🎯 Vue d'ensemble
 
-### ✅ Affectation des Surveillants
-- **Algorithme d'affectation automatique** avec 6 contraintes:
-  - C1: Volume horaire suffisant
-  - C2: Disponibilité déclarée
-  - C3: Pas de conflit de matière
-  - C4: Non-simultanéité
-  - C5: Appartenance au département
-  - C6: Équité de charge
-- Résolution manuelle des conflits
-- Visualisation en calendrier
-- Gestion des charges horaires
+Système web moderne pour automatiser la gestion des examens universitaires, incluant :
 
-### ✅ Authentification & Sécurité
-- Authentification JWT
-- Gestion des comptes enseignants
-- Routes protégées
-- Sessions sécurisées
+- 📅 **Planification intelligente** des examens avec génération automatique
+- 👥 **Gestion de surveillance** et affectation des enseignants
+- 🏫 **Gestion des salles** et capacités
+- 📄 **Génération de documents** (convocations, emplois du temps)
+- 🔐 **Authentification sécurisée** avec gestion des rôles (Admin/Enseignant)
 
-### ✅ Gestion des Indisponibilités
-- Déclaration des indisponibilités
-- Validation par l'administration
-- Prise en compte dans l'affectation
-- Historique des indisponibilités
+## ✨ Fonctionnalités principales
 
-### ✅ Rapports & Statistiques
-- Convocations PDF
-- Statistiques de charge
-- Rapports de session
-- Export des données
+### Pour les Administrateurs
+- ✅ Créer et gérer les planifications d'examens
+- ✅ Générer automatiquement les emplois du temps
+- ✅ Affecter les surveillants aux examens
+- ✅ Gérer les salles et leurs capacités
+- ✅ Visualiser la charge de surveillance par enseignant
+- ✅ Exporter les planifications en PDF
+
+### Pour les Enseignants
+- ✅ Consulter leurs convocations de surveillance
+- ✅ Déclarer leurs indisponibilités
+- ✅ Visualiser leur emploi du temps de surveillance
 
 ## 🏗️ Architecture
 
-### Backend (FastAPI + PostgreSQL)
 ```
-server/
-├── app/
-│   ├── algorithms/      # Algorithme d'affectation
-│   ├── crud/           # Opérations base de données
-│   ├── models/         # Modèles SQLAlchemy
-│   ├── routers/        # Routes API
-│   ├── schemas/        # Schémas Pydantic
-│   ├── services/       # Logique métier
-│   └── utils/          # Utilitaires (JWT, etc.)
-├── requirements.txt    # Dépendances Python
-└── .env               # Configuration
-```
-
-### Frontend (Next.js + TypeScript)
-```
-frontend/
-├── src/
-│   ├── app/           # Pages Next.js
-│   ├── components/    # Composants React
-│   ├── hooks/         # Hooks personnalisés
-│   ├── lib/           # API client & utils
-│   └── types/         # Types TypeScript
-├── package.json       # Dépendances Node
-└── next.config.ts     # Configuration Next.js
+projet/
+├── frontend/          # Application Next.js (React 19 + TypeScript)
+│   ├── src/
+│   │   ├── app/           # Pages et routes (App Router)
+│   │   │   ├── (admin)/   # Routes administrateur
+│   │   │   ├── (enseigant)/ # Routes enseignant
+│   │   │   └── login/     # Authentification
+│   │   └── components/    # Composants réutilisables
+│   └── public/        # Assets statiques
+│
+├── server/            # API FastAPI (Python)
+│   ├── app/
+│   │   ├── routers/       # Endpoints API
+│   │   ├── services/      # Logique métier
+│   │   ├── models/        # Modèles SQLAlchemy
+│   │   ├── schemas/       # Schémas Pydantic
+│   │   ├── crud/          # Opérations base de données
+│   │   ├── algorithms/    # Algorithmes de génération
+│   │   └── middleware/    # Middleware (auth, CORS)
+│   ├── alembic/       # Migrations de base de données
+│   └── tests/         # Tests unitaires et d'intégration
+│
+├── START_ALL.bat      # Démarrer frontend + backend
+├── START_FRONTEND.bat # Démarrer uniquement le frontend
+└── START_BACKEND.bat  # Démarrer uniquement le backend
 ```
 
 ## 🚀 Installation
 
 ### Prérequis
-- Python 3.13+
-- Node.js 18+
-- PostgreSQL 14+
 
-### 1. Cloner le Projet
+- **Node.js** 20+ et npm
+- **Python** 3.13+
+- **PostgreSQL** 14+ (ou SQLite pour développement)
+- **Git**
+
+### 1. Cloner le projet
+
 ```bash
 git clone <repository-url>
 cd projet
 ```
 
-### 2. Configuration Backend
+### 2. Configuration du Backend
+
 ```bash
 cd server
 
-# Créer environnement virtuel
+# Créer un environnement virtuel
 python -m venv .venv
-.venv\Scripts\activate  # Windows
-source .venv/bin/activate  # Linux/Mac
 
-# Installer dépendances
+# Activer l'environnement virtuel
+# Windows:
+.venv\Scripts\activate
+# Linux/Mac:
+source .venv/bin/activate
+
+# Installer les dépendances
 pip install -r requirements.txt
 
-# Configurer .env
-cp .env.example .env
+# Configurer les variables d'environnement
+copy .env.example .env
 # Éditer .env avec vos paramètres
 ```
 
-### 3. Configuration Frontend
+**Configuration `.env` :**
+
+```env
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/exam_db
+# Ou pour SQLite (développement):
+# DATABASE_URL=sqlite:///./app.db
+
+# Application
+APP_NAME=Exam Management System
+APP_VERSION=1.0.0
+FRONTEND_ORIGIN=http://localhost:3000
+
+# JWT Authentication
+SECRET_KEY=your-secret-key-here-change-in-production
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+```
+
+**Initialiser la base de données :**
+
+```bash
+# Créer les tables
+alembic upgrade head
+
+# Créer un compte administrateur
+python create_admin_account.sql
+```
+
+### 3. Configuration du Frontend
+
 ```bash
 cd frontend
 
-# Installer dépendances
+# Installer les dépendances
 npm install
 
-# Configurer .env.local
-cp .env.example .env.local
-# Éditer .env.local avec vos paramètres
+# Configurer les variables d'environnement
+# Créer un fichier .env.local
 ```
 
-### 4. Base de Données
-```bash
-cd server
+**Configuration `.env.local` :**
 
-# Créer la base
-psql -U postgres -c "CREATE DATABASE exam_surveillance;"
-
-# Exécuter le script SQL
-psql -U postgres -d exam_surveillance -f script.sql
-
-# Corriger les données (important!)
-psql -U postgres -d exam_surveillance -f fix_data.sql
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api
 ```
 
-## 🎯 Démarrage Rapide
+## 🎮 Démarrage
 
-### Option 1: Script Automatique (Windows)
+### Option 1 : Démarrage automatique (Windows)
+
 ```bash
-# Double-cliquer sur:
+# Démarrer frontend + backend ensemble
 START_ALL.bat
+
+# Ou séparément :
+START_BACKEND.bat   # Backend sur http://localhost:8000
+START_FRONTEND.bat  # Frontend sur http://localhost:3000
 ```
 
-### Option 2: Manuel
+### Option 2 : Démarrage manuel
 
-**Terminal 1 - Backend:**
+**Backend :**
+
 ```bash
 cd server
-.venv\Scripts\activate
-uvicorn app.main:app --reload --port 8000
+.venv\Scripts\activate  # Windows
+# source .venv/bin/activate  # Linux/Mac
+python app/main.py
 ```
 
-**Terminal 2 - Frontend:**
+**Frontend :**
+
 ```bash
 cd frontend
 npm run dev
 ```
 
-**Navigateur:**
-- Frontend: http://localhost:3000
-- API Docs: http://localhost:8000/docs
+### Accès à l'application
 
-## 📚 Documentation
+- **Frontend** : http://localhost:3000
+- **Backend API** : http://localhost:8000
+- **Documentation API** : http://localhost:8000/docs
+- **ReDoc** : http://localhost:8000/redoc
 
-| Document | Description |
-|----------|-------------|
-| `GUIDE_DEMARRAGE_RAPIDE.md` | Guide de démarrage complet |
-| `MERGE_RESOLUTION_COMPLETE.md` | Résolution du merge hajer2 |
-| `RESUME_CORRECTIONS.md` | Corrections appliquées |
-| `FIX_SALLE_ID_BUG.md` | Documentation bug Salle.id |
-| `TEST_AFFECTATION_FIX.md` | Guide de test |
+## 🛠️ Stack technique
 
-## 🔧 Scripts Utiles
+### Frontend
+- **Framework** : Next.js 16.2 (App Router)
+- **UI** : React 19.2
+- **Styling** : Tailwind CSS 4.0
+- **Language** : TypeScript 5
+- **PDF** : @react-pdf/renderer
+- **HTTP** : Fetch API native
 
-| Script | Description |
-|--------|-------------|
-| `START_ALL.bat` | Démarre backend + frontend |
-| `PUSH_TO_REMOTE.bat` | Push vers origin/Farah |
-| `server/fix_data.sql` | Corrige les données |
-| `server/diagnose_conflicts.py` | Diagnostic conflits |
+### Backend
+- **Framework** : FastAPI 0.136
+- **ORM** : SQLAlchemy 2.0
+- **Validation** : Pydantic 2.13
+- **Auth** : JWT (python-jose + passlib)
+- **Database** : PostgreSQL / SQLite
+- **Migrations** : Alembic
+- **Server** : Uvicorn
+
+### Algorithmes
+- **Génération de planification** : Algorithmes d'optimisation personnalisés
+- **Affectation de surveillance** : Algorithmes de répartition équitable
+- **Gestion des contraintes** : Validation multi-critères
+
+## 📁 Structure de la base de données
+
+### Tables principales
+
+- **users** : Comptes utilisateurs (admin, enseignants)
+- **planifications** : Sessions d'examens
+- **examens** : Examens individuels
+- **salles** : Salles disponibles
+- **surveillances** : Affectations de surveillance
+- **indisponibilites** : Indisponibilités des enseignants
+- **sections** : Sections académiques
+- **matieres** : Matières enseignées
+- **groupes** : Groupes d'étudiants
+
+## 🔒 Sécurité
+
+- ✅ Authentification JWT avec tokens sécurisés
+- ✅ Hachage des mots de passe avec bcrypt
+- ✅ Protection CORS configurée
+- ✅ Validation des entrées avec Pydantic
+- ✅ Gestion des sessions côté serveur
+- ✅ Protection contre les injections SQL (ORM)
+
+## 📊 API Endpoints
+
+### Authentification
+```
+POST   /api/auth/login          # Connexion
+POST   /api/auth/logout         # Déconnexion
+GET    /api/auth/me             # Profil utilisateur
+```
+
+### Planifications
+```
+GET    /api/planifications      # Liste des planifications
+POST   /api/planifications      # Créer une planification
+GET    /api/planifications/{id} # Détails d'une planification
+PUT    /api/planifications/{id} # Modifier une planification
+DELETE /api/planifications/{id} # Supprimer une planification
+POST   /api/planifications/generate # Générer automatiquement
+```
+
+### Examens
+```
+GET    /api/examens             # Liste des examens
+POST   /api/examens             # Créer un examen
+PUT    /api/examens/{id}        # Modifier un examen
+DELETE /api/examens/{id}        # Supprimer un examen
+```
+
+### Surveillance
+```
+GET    /api/surveillances       # Liste des surveillances
+POST   /api/surveillances       # Affecter un surveillant
+GET    /api/surveillances/charge # Charge par enseignant
+GET    /api/surveillances/convocations/{id} # Convocations
+```
+
+### Salles
+```
+GET    /api/salles              # Liste des salles
+POST   /api/salles              # Créer une salle
+PUT    /api/salles/{id}         # Modifier une salle
+DELETE /api/salles/{id}         # Supprimer une salle
+```
 
 ## 🧪 Tests
 
-### Backend
 ```bash
 cd server
+
+# Exécuter tous les tests
 pytest
+
+# Tests spécifiques
+pytest tests/test_planif.py
+pytest tests/test_surv.py
+
+# Avec couverture
+pytest --cov=app tests/
 ```
+
+## 📦 Build et déploiement
 
 ### Frontend
+
 ```bash
 cd frontend
-npm run test
-npm run build  # Vérifier build
+
+# Build de production
+npm run build
+
+# Démarrer en production
+npm start
 ```
 
-## 📡 API Endpoints
+### Backend
 
-### Authentification
-- `POST /api/auth/login` - Connexion
-- `POST /api/auth/logout` - Déconnexion
-- `GET /api/auth/me` - Profil utilisateur
-
-### Surveillance
-- `POST /api/surveillances/affecter-session` - Affectation auto
-- `POST /api/surveillances/manual-assignment` - Affectation manuelle
-- `GET /api/surveillances/getallsurveillants` - Liste enseignants
-- `GET /api/surveillances/{session_id}` - Surveillances session
-
-### Indisponibilités
-- `GET /api/disponibilites` - Liste
-- `POST /api/disponibilites` - Créer
-- `PUT /api/disponibilites/{id}` - Modifier
-- `DELETE /api/disponibilites/{id}` - Supprimer
-
-### Planification
-- `GET /api/planifications` - Liste
-- `POST /api/planifications` - Créer
-- `PUT /api/planifications/{id}` - Modifier
-- `DELETE /api/planifications/{id}` - Supprimer
-
-Documentation complète: http://localhost:8000/docs
-
-## 🐛 Problèmes Connus & Solutions
-
-### Backend ne démarre pas
-**Erreur:** `ModuleNotFoundError: No module named 'jose'`
-
-**Solution:**
 ```bash
 cd server
-.venv\Scripts\pip install python-jose[cryptography] passlib[bcrypt]
+
+# Avec Uvicorn
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+# Avec Gunicorn (production)
+gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker
 ```
 
-### Tous les surveillants en conflit
-**Cause:** `section_departement_id` est NULL
+## 🐛 Dépannage
 
-**Solution:**
+### Le backend ne démarre pas
+- Vérifier que l'environnement virtuel est activé
+- Vérifier la connexion à la base de données
+- Vérifier que le port 8000 n'est pas déjà utilisé
+
+### Le frontend ne se connecte pas au backend
+- Vérifier que `NEXT_PUBLIC_API_BASE_URL` est correctement configuré
+- Vérifier que le backend est démarré
+- Vérifier la configuration CORS dans `server/app/main.py`
+
+### Erreurs de base de données
+- Exécuter les migrations : `alembic upgrade head`
+- Vérifier les credentials dans `.env`
+- Vérifier que PostgreSQL est démarré
+
+## 📝 Scripts utiles
+
 ```bash
-cd server
-psql -U postgres -d exam_surveillance -f fix_data.sql
+# Backend
+python create_accounts.py              # Créer des comptes de test
+python check_admin.py                  # Vérifier les comptes admin
+python gestion_comptes_enseignants.py  # Gérer les enseignants
+
+# Frontend
+npm run lint                           # Linter le code
+npm run build                          # Build de production
 ```
 
-### Erreur "AMPHI-INFO"
-**Status:** ✅ Corrigé dans commit `10d22d4`
+## 🤝 Contribution
 
-## 🔄 Workflow Git
-
-### Branches
-- `main` - Production
-- `Farah` - Développement principal
-- `hajer2` - Fonctionnalités Auth + Indispo (mergée)
-
-### Commits Récents
-```
-10d22d4 - fix: Correction bugs critiques surveillance affectation
-ebd4a2b - Merge branch origin/hajer2 and resolve conflicts
-a47680d - examen-surv
-```
-
-### Pusher les Modifications
-```bash
-# Vérifier l'état
-git status
-
-# Pusher
-git push origin Farah
-
-# Ou utiliser le script
-PUSH_TO_REMOTE.bat
-```
-
-## 👥 Contributeurs
-
-- Farah - Développement principal, surveillance
-- Hajer - Authentification, indisponibilités
-- Nour - Planification
-- Ahlem - Frontend
+1. Fork le projet
+2. Créer une branche (`git checkout -b feature/AmazingFeature`)
+3. Commit les changements (`git commit -m 'Add AmazingFeature'`)
+4. Push vers la branche (`git push origin feature/AmazingFeature`)
+5. Ouvrir une Pull Request
 
 ## 📄 Licence
 
-[Votre licence ici]
+Ce projet est sous licence privée - Faculté des Sciences de Tunis
 
-## 🆘 Support
+## 👥 Équipe
 
-En cas de problème:
-1. Consulter `GUIDE_DEMARRAGE_RAPIDE.md`
-2. Vérifier les logs backend/frontend
-3. Exécuter `diagnose_conflicts.py`
-4. Consulter la documentation API
+Développé pour la Faculté des Sciences de Tunis (FST)
+
+## 📞 Support
+
+Pour toute question ou problème :
+- 📧 Email : support@fst.utm.tn
+
 
 ---
 
-**Version:** 2.0.0
-**Date:** 2026-05-24
-**Status:** ✅ Production Ready
+<div align="center">
+  <p>Fait avec ❤️ pour la FST</p>
+  <p>© 2026 Faculté des Sciences de Tunis • Tous droits réservés</p>
+</div>
