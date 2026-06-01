@@ -25,7 +25,6 @@ export function PlanificationForm({
   semestre,
   sessionId,
   sectionId,
-  hasPlan,
   onSemestreChange,
   onSessionChange,
   onSectionChange,

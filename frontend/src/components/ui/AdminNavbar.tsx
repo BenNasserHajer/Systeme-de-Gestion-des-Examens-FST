@@ -22,6 +22,7 @@ export function AdminNavbar() {
 
   const navLinks = [
     { href: "/planification", label: "Planification" },
+    { href: "/surveillance/affectation", label: "Affectation" },
     { href: "/surveillance", label: "Surveillance" },
     { href: "/salles", label: "Salles" },
   ];
